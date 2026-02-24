@@ -8,6 +8,7 @@ import { MeetingsPage } from "@/pages/meetings-page";
 import { ProjectsPage } from "@/pages/projects-page";
 import { CompaniesPage } from "@/pages/companies-page";
 import { PeoplePage } from "@/pages/people-page";
+import { AssistantPage } from "@/pages/assistant-page";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="companies" element={<CompaniesPage />} />
           <Route path="people" element={<PeoplePage />} />
+          <Route path="assistant" element={<AssistantPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

@@ -1,5 +1,6 @@
 import {
   Building2,
+  Bot,
   ChartGantt,
   LayoutDashboard,
   ListTodo,
@@ -49,6 +50,11 @@ export const navItems: NavItem[] = [
     title: "People",
     to: "/people",
     icon: SquareUser,
+  },
+  {
+    title: "Assistant",
+    to: "/assistant",
+    icon: Bot,
   },
 ];
 

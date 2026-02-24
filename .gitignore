@@ -11,6 +11,19 @@ node_modules
 dist
 dist-ssr
 *.local
+release/
+
+# Electron build/package artifacts
+*.dmg
+*.zip
+*.blockmap
+*.asar
+*.app
+*.pkg
+*.exe
+*.AppImage
+*.deb
+*.rpm
 
 # Editor directories and files
 .vscode/*
