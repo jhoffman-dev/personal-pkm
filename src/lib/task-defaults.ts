@@ -54,6 +54,7 @@ export function createEmptyTaskInput(params?: {
     title: params?.title?.trim() || "Untitled task",
     description: "",
     notes: "",
+    tags: [],
     status: params?.status ?? "inbox",
     level: params?.level ?? "task",
     parentTaskId: params?.parentTaskId ?? null,

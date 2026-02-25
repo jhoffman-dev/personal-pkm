@@ -1,9 +1,19 @@
 import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor";
+import {
+  PropertyLinkPicker,
+  type PropertyOption,
+} from "@/components/property-link-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
+import {
+  createEmptyNoteInput,
+  DEFAULT_NOTE_BODY,
+  DEFAULT_NOTE_TITLE,
+} from "@/lib/note-defaults";
 import { normalizeParaType } from "@/lib/project-defaults";
+import { createEmptyProjectInput } from "@/lib/project-defaults";
+import { createEmptyTaskInput } from "@/lib/task-defaults";
 import {
   dataActions,
   dataThunks,
@@ -11,18 +21,16 @@ import {
   useAppDispatch,
   useAppSelector,
 } from "@/store";
-import { Check, ChevronDown, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 type LinkOption = {
   id: string;
   label: string;
 };
 
-function toggleId(values: string[], id: string): string[] {
-  return values.includes(id)
-    ? values.filter((value) => value !== id)
-    : [...values, id];
+function addUnique(values: string[], id: string): string[] {
+  return values.includes(id) ? values : [...values, id];
 }
 
 function equalSet(a: string[], b: string[]): boolean {
@@ -44,145 +52,19 @@ function equalSet(a: string[], b: string[]): boolean {
   return true;
 }
 
-function PropertyLinkSection({
-  title,
-  options,
-  selectedIds,
-  onToggle,
-}: {
-  title: string;
-  options: LinkOption[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-semibold">{title}</h4>
-      {options.length === 0 ? (
-        <p className="text-muted-foreground text-xs">No items available.</p>
-      ) : (
-        <div className="space-y-1">
-          {options.map((option) => {
-            const checked = selectedIds.includes(option.id);
-            return (
-              <label
-                key={option.id}
-                className="hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => onToggle(option.id)}
-                  className="size-4"
-                />
-                <span className="truncate">{option.label}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
+function getTagColorStyle(tag: string): CSSProperties {
+  let hash = 0;
+  for (let index = 0; index < tag.length; index += 1) {
+    hash = (hash * 31 + tag.charCodeAt(index)) >>> 0;
+  }
 
-function RelatedNotesDropdownSection({
-  options,
-  selectedIds,
-  onToggle,
-}: {
-  options: LinkOption[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
+  const hue = hash % 360;
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!containerRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open]);
-
-  const filteredOptions = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) {
-      return options.slice(0, 100);
-    }
-
-    return options
-      .filter((option) => option.label.toLowerCase().includes(normalized))
-      .slice(0, 100);
-  }, [options, query]);
-
-  return (
-    <div className="space-y-2" ref={containerRef}>
-      <h4 className="text-sm font-semibold">Related notes</h4>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full justify-between"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="truncate">
-          {selectedIds.length === 0
-            ? "Select related notes"
-            : `${selectedIds.length} selected`}
-        </span>
-        <ChevronDown className="size-4" />
-      </Button>
-
-      {open && (
-        <div className="bg-background space-y-2 rounded-md border p-2">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search notes..."
-          />
-
-          <div className="max-h-56 space-y-1 overflow-y-auto">
-            {filteredOptions.length === 0 ? (
-              <p className="text-muted-foreground px-2 py-1 text-xs">
-                No matching notes.
-              </p>
-            ) : (
-              filteredOptions.map((option) => {
-                const checked = selectedIds.includes(option.id);
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className="hover:bg-muted/60 flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-sm"
-                    onClick={() => onToggle(option.id)}
-                  >
-                    <span className="truncate">{option.label}</span>
-                    {checked ? <Check className="text-primary size-4" /> : null}
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {options.length > 100 && query.trim().length === 0 && (
-            <p className="text-muted-foreground px-1 text-xs">
-              Showing first 100 notes. Start typing to narrow results.
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return {
+    backgroundColor: `hsl(${hue} 82% 90%)`,
+    borderColor: `hsl(${hue} 52% 72%)`,
+    color: `hsl(${hue} 42% 24%)`,
+  };
 }
 
 export function NotesPage() {
@@ -241,7 +123,7 @@ export function NotesPage() {
       .length;
   }, [selectedNote, sortedNotes]);
 
-  const peopleOptions = useMemo<LinkOption[]>(
+  const peopleOptions = useMemo<PropertyOption[]>(
     () =>
       peopleState.ids
         .map((id) => peopleState.entities[id])
@@ -253,7 +135,7 @@ export function NotesPage() {
     [peopleState.entities, peopleState.ids],
   );
 
-  const companyOptions = useMemo<LinkOption[]>(
+  const companyOptions = useMemo<PropertyOption[]>(
     () =>
       companiesState.ids
         .map((id) => companiesState.entities[id])
@@ -265,7 +147,7 @@ export function NotesPage() {
     [companiesState.entities, companiesState.ids],
   );
 
-  const projectOptions = useMemo<LinkOption[]>(
+  const projectOptions = useMemo<PropertyOption[]>(
     () =>
       projectsState.ids
         .map((id) => projectsState.entities[id])
@@ -278,7 +160,7 @@ export function NotesPage() {
     [projectsState.entities, projectsState.ids],
   );
 
-  const taskOptions = useMemo<LinkOption[]>(
+  const taskOptions = useMemo<PropertyOption[]>(
     () =>
       tasksState.ids
         .map((id) => tasksState.entities[id])
@@ -290,7 +172,7 @@ export function NotesPage() {
     [tasksState.entities, tasksState.ids],
   );
 
-  const meetingOptions = useMemo<LinkOption[]>(
+  const meetingOptions = useMemo<PropertyOption[]>(
     () =>
       meetingsState.ids
         .map((id) => meetingsState.entities[id])
@@ -302,7 +184,7 @@ export function NotesPage() {
     [meetingsState.entities, meetingsState.ids],
   );
 
-  const relatedNoteOptions = useMemo<LinkOption[]>(
+  const relatedNoteOptions = useMemo<PropertyOption[]>(
     () =>
       sortedNotes
         .filter((note) => note.id !== selectedNote?.id)
@@ -312,6 +194,87 @@ export function NotesPage() {
         })),
     [selectedNote?.id, sortedNotes],
   );
+
+  const sharedTagSuggestions = useMemo(() => {
+    const values = new Set<string>();
+
+    sortedNotes.forEach((note) => {
+      (note.tags ?? []).forEach((tag) => {
+        if (tag.trim()) {
+          values.add(tag.trim());
+        }
+      });
+    });
+
+    projectsState.ids
+      .map((id) => projectsState.entities[id])
+      .filter(Boolean)
+      .forEach((project) => {
+        (project.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    tasksState.ids
+      .map((id) => tasksState.entities[id])
+      .filter(Boolean)
+      .forEach((task) => {
+        (task.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    meetingsState.ids
+      .map((id) => meetingsState.entities[id])
+      .filter(Boolean)
+      .forEach((meeting) => {
+        (meeting.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    companiesState.ids
+      .map((id) => companiesState.entities[id])
+      .filter(Boolean)
+      .forEach((company) => {
+        (company.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    peopleState.ids
+      .map((id) => peopleState.entities[id])
+      .filter(Boolean)
+      .forEach((person) => {
+        (person.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [
+    companiesState.entities,
+    companiesState.ids,
+    meetingsState.entities,
+    meetingsState.ids,
+    peopleState.entities,
+    peopleState.ids,
+    projectsState.entities,
+    projectsState.ids,
+    sortedNotes,
+    tasksState.entities,
+    tasksState.ids,
+  ]);
 
   const backlinks = useMemo(() => {
     if (!selectedNote) {
@@ -640,6 +603,103 @@ export function NotesPage() {
     }
   };
 
+  const createQuickNote = async (label: string) => {
+    const title = label.trim() || DEFAULT_NOTE_TITLE;
+    const created = await dispatch(
+      dataThunks.notes.createOne({
+        ...createEmptyNoteInput(),
+        title,
+        body: `<h1>${title}</h1><p></p>`,
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickTask = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.tasks.createOne(
+        createEmptyTaskInput({
+          title: label.trim() || "New task",
+          status: "inbox",
+        }),
+      ),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickProject = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.projects.createOne(
+        createEmptyProjectInput({
+          name: label.trim() || "New project",
+          paraType: "project",
+        }),
+      ),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickMeeting = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.meetings.createOne({
+        title: label.trim() || "New meeting",
+        tags: [],
+        scheduledFor: new Date().toISOString(),
+        location: "",
+        personIds: [],
+        companyIds: [],
+        projectIds: [],
+        noteIds: [],
+        taskIds: [],
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickCompany = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.companies.createOne({
+        name: label.trim() || "New company",
+        tags: [],
+        website: "",
+        personIds: [],
+        projectIds: [],
+        noteIds: [],
+        taskIds: [],
+        meetingIds: [],
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickPerson = async (label: string) => {
+    const normalized = label.trim();
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    const firstName = parts[0] || "New";
+    const lastName = parts.slice(1).join(" ") || "Person";
+
+    const created = await dispatch(
+      dataThunks.people.createOne({
+        firstName,
+        lastName,
+        tags: [],
+        email: "",
+        companyIds: [],
+        projectIds: [],
+        noteIds: [],
+        taskIds: [],
+        meetingIds: [],
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
   return (
     <section className="h-[calc(100svh-41px)] p-6">
       <Card className="h-full gap-0 py-0">
@@ -760,11 +820,17 @@ export function NotesPage() {
                       }
                     }}
                     placeholder="Add tag"
+                    list="shared-tag-suggestions-notes"
                   />
                   <Button type="button" variant="outline" onClick={addTag}>
                     Add
                   </Button>
                 </div>
+                <datalist id="shared-tag-suggestions-notes">
+                  {sharedTagSuggestions.map((tag) => (
+                    <option key={tag} value={tag} />
+                  ))}
+                </datalist>
                 <div className="flex flex-wrap gap-2">
                   {draftTags.length === 0 ? (
                     <p className="text-muted-foreground text-xs">No tags.</p>
@@ -772,7 +838,8 @@ export function NotesPage() {
                     draftTags.map((tag) => (
                       <span
                         key={tag}
-                        className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
+                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+                        style={getTagColorStyle(tag)}
                       >
                         {tag}
                         <button
@@ -793,57 +860,95 @@ export function NotesPage() {
                 </div>
               </div>
 
-              <RelatedNotesDropdownSection
+              <PropertyLinkPicker
+                title="Related notes"
                 options={relatedNoteOptions}
                 selectedIds={draftRelatedNoteIds}
-                onToggle={(id) => {
-                  setDraftRelatedNoteIds((prev) => toggleId(prev, id));
+                onAdd={(id) => {
+                  setDraftRelatedNoteIds((prev) => addUnique(prev, id));
                 }}
+                onRemove={(id) => {
+                  setDraftRelatedNoteIds((prev) =>
+                    prev.filter((value) => value !== id),
+                  );
+                }}
+                onCreateOption={createQuickNote}
+                searchPlaceholder="Search notes..."
               />
 
-              <PropertyLinkSection
+              <PropertyLinkPicker
                 title="People"
                 options={peopleOptions}
                 selectedIds={draftPersonIds}
-                onToggle={(id) => {
-                  setDraftPersonIds((prev) => toggleId(prev, id));
+                onAdd={(id) => {
+                  setDraftPersonIds((prev) => addUnique(prev, id));
                 }}
+                onRemove={(id) => {
+                  setDraftPersonIds((prev) =>
+                    prev.filter((value) => value !== id),
+                  );
+                }}
+                onCreateOption={createQuickPerson}
               />
 
-              <PropertyLinkSection
+              <PropertyLinkPicker
                 title="Companies"
                 options={companyOptions}
                 selectedIds={draftCompanyIds}
-                onToggle={(id) => {
-                  setDraftCompanyIds((prev) => toggleId(prev, id));
+                onAdd={(id) => {
+                  setDraftCompanyIds((prev) => addUnique(prev, id));
                 }}
+                onRemove={(id) => {
+                  setDraftCompanyIds((prev) =>
+                    prev.filter((value) => value !== id),
+                  );
+                }}
+                onCreateOption={createQuickCompany}
               />
 
-              <PropertyLinkSection
+              <PropertyLinkPicker
                 title="Projects"
                 options={projectOptions}
                 selectedIds={draftProjectIds}
-                onToggle={(id) => {
-                  setDraftProjectIds((prev) => toggleId(prev, id));
+                onAdd={(id) => {
+                  setDraftProjectIds((prev) => addUnique(prev, id));
                 }}
+                onRemove={(id) => {
+                  setDraftProjectIds((prev) =>
+                    prev.filter((value) => value !== id),
+                  );
+                }}
+                onCreateOption={createQuickProject}
               />
 
-              <PropertyLinkSection
+              <PropertyLinkPicker
                 title="Tasks"
                 options={taskOptions}
                 selectedIds={draftTaskIds}
-                onToggle={(id) => {
-                  setDraftTaskIds((prev) => toggleId(prev, id));
+                onAdd={(id) => {
+                  setDraftTaskIds((prev) => addUnique(prev, id));
                 }}
+                onRemove={(id) => {
+                  setDraftTaskIds((prev) =>
+                    prev.filter((value) => value !== id),
+                  );
+                }}
+                onCreateOption={createQuickTask}
               />
 
-              <PropertyLinkSection
+              <PropertyLinkPicker
                 title="Meetings"
                 options={meetingOptions}
                 selectedIds={draftMeetingIds}
-                onToggle={(id) => {
-                  setDraftMeetingIds((prev) => toggleId(prev, id));
+                onAdd={(id) => {
+                  setDraftMeetingIds((prev) => addUnique(prev, id));
                 }}
+                onRemove={(id) => {
+                  setDraftMeetingIds((prev) =>
+                    prev.filter((value) => value !== id),
+                  );
+                }}
+                onCreateOption={createQuickMeeting}
               />
 
               <div className="space-y-2">

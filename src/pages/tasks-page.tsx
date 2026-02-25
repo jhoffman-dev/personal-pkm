@@ -2,6 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  PropertyLinkPicker,
+  type PropertyOption,
+} from "@/components/property-link-picker";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -9,7 +13,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { Task, TaskLevel, TaskStatus } from "@/data/entities";
-import { createEmptyNoteInput } from "@/lib/note-defaults";
+import { createEmptyNoteInput, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
+import { createEmptyProjectInput } from "@/lib/project-defaults";
 import { normalizeParaType } from "@/lib/project-defaults";
 import {
   createEmptyTaskInput,
@@ -24,8 +29,12 @@ import {
   useAppDispatch,
   useAppSelector,
 } from "@/store";
-import { Check, ChevronDown, Plus, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
+function addUnique(values: string[], id: string): string[] {
+  return values.includes(id) ? values : [...values, id];
+}
 
 type TaskNode = Task & { children: TaskNode[] };
 
@@ -117,6 +126,8 @@ export function TasksPage() {
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [detailsTitle, setDetailsTitle] = useState("");
   const [detailsDescription, setDetailsDescription] = useState("");
+  const [detailsTags, setDetailsTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [detailsStatus, setDetailsStatus] = useState<TaskStatus>("inbox");
   const [detailsDueDate, setDetailsDueDate] = useState("");
   const [detailsNoteIds, setDetailsNoteIds] = useState<string[]>([]);
@@ -126,11 +137,8 @@ export function TasksPage() {
   const [detailsMeetingIds, setDetailsMeetingIds] = useState<string[]>([]);
   const [mainNoteId, setMainNoteId] = useState<string | null>(null);
   const [mainNoteBodyDraft, setMainNoteBodyDraft] = useState("");
-  const [linkedNotesOpen, setLinkedNotesOpen] = useState(false);
-  const [linkedNotesQuery, setLinkedNotesQuery] = useState("");
   const [mainNoteSheetOpen, setMainNoteSheetOpen] = useState(false);
   const [isEnsuringMainNote, setIsEnsuringMainNote] = useState(false);
-  const linkedNotesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (tasksState.status === "idle") {
@@ -199,37 +207,154 @@ export function TasksPage() {
     [notesState.entities, notesState.ids],
   );
 
-  const filteredLinkedNoteOptions = useMemo(() => {
-    const normalized = linkedNotesQuery.trim().toLowerCase();
-    if (!normalized) {
-      return linkedNoteOptions.slice(0, 100);
-    }
+  const linkedNotePropertyOptions = useMemo<PropertyOption[]>(
+    () =>
+      linkedNoteOptions.map((note) => ({
+        id: note.id,
+        label: note.title,
+      })),
+    [linkedNoteOptions],
+  );
 
-    return linkedNoteOptions
-      .filter((note) => note.title.toLowerCase().includes(normalized))
-      .slice(0, 100);
-  }, [linkedNoteOptions, linkedNotesQuery]);
+  const projectOptions = useMemo<PropertyOption[]>(
+    () =>
+      projectsState.ids
+        .map((id) => projectsState.entities[id])
+        .filter(Boolean)
+        .filter((project) => normalizeParaType(project.paraType) !== "archive")
+        .map((project) => ({
+          id: project.id,
+          label: project.name,
+        })),
+    [projectsState.entities, projectsState.ids],
+  );
 
-  useEffect(() => {
-    if (!linkedNotesOpen) {
-      return;
-    }
+  const peopleOptions = useMemo<PropertyOption[]>(
+    () =>
+      peopleState.ids
+        .map((id) => peopleState.entities[id])
+        .filter(Boolean)
+        .map((person) => ({
+          id: person.id,
+          label: `${person.firstName} ${person.lastName}`.trim(),
+        })),
+    [peopleState.entities, peopleState.ids],
+  );
 
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!linkedNotesRef.current?.contains(target)) {
-        setLinkedNotesOpen(false);
-      }
-    };
+  const companyOptions = useMemo<PropertyOption[]>(
+    () =>
+      companiesState.ids
+        .map((id) => companiesState.entities[id])
+        .filter(Boolean)
+        .map((company) => ({
+          id: company.id,
+          label: company.name,
+        })),
+    [companiesState.entities, companiesState.ids],
+  );
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [linkedNotesOpen]);
+  const meetingOptions = useMemo<PropertyOption[]>(
+    () =>
+      meetingsState.ids
+        .map((id) => meetingsState.entities[id])
+        .filter(Boolean)
+        .map((meeting) => ({
+          id: meeting.id,
+          label: meeting.title,
+        })),
+    [meetingsState.entities, meetingsState.ids],
+  );
+
+  const sharedTagSuggestions = useMemo(() => {
+    const values = new Set<string>();
+
+    tasksState.ids
+      .map((id) => tasksState.entities[id])
+      .filter(Boolean)
+      .forEach((task) => {
+        (task.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    projectsState.ids
+      .map((id) => projectsState.entities[id])
+      .filter(Boolean)
+      .forEach((project) => {
+        (project.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    notesState.ids
+      .map((id) => notesState.entities[id])
+      .filter(Boolean)
+      .forEach((note) => {
+        (note.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    meetingsState.ids
+      .map((id) => meetingsState.entities[id])
+      .filter(Boolean)
+      .forEach((meeting) => {
+        (meeting.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    companiesState.ids
+      .map((id) => companiesState.entities[id])
+      .filter(Boolean)
+      .forEach((company) => {
+        (company.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    peopleState.ids
+      .map((id) => peopleState.entities[id])
+      .filter(Boolean)
+      .forEach((person) => {
+        (person.tags ?? []).forEach((tag) => {
+          if (tag.trim()) {
+            values.add(tag.trim());
+          }
+        });
+      });
+
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [
+    companiesState.entities,
+    companiesState.ids,
+    meetingsState.entities,
+    meetingsState.ids,
+    notesState.entities,
+    notesState.ids,
+    peopleState.entities,
+    peopleState.ids,
+    projectsState.entities,
+    projectsState.ids,
+    tasksState.entities,
+    tasksState.ids,
+  ]);
 
   useEffect(() => {
     if (!expandedTask) {
       setDetailsTitle("");
       setDetailsDescription("");
+      setDetailsTags([]);
       setDetailsStatus("inbox");
       setDetailsDueDate("");
       setDetailsNoteIds([]);
@@ -244,6 +369,7 @@ export function TasksPage() {
 
     setDetailsTitle(expandedTask.title);
     setDetailsDescription(expandedTask.description ?? "");
+    setDetailsTags(expandedTask.tags ?? []);
     setDetailsStatus(normalizeTaskStatus(expandedTask.status));
     setDetailsDueDate(
       expandedTask.dueDate ? expandedTask.dueDate.slice(0, 10) : "",
@@ -276,6 +402,7 @@ export function TasksPage() {
           input: {
             title: detailsTitle || "Untitled task",
             description: detailsDescription,
+            tags: detailsTags,
             status: detailsStatus,
             dueDate: detailsDueDate
               ? new Date(detailsDueDate).toISOString()
@@ -300,6 +427,7 @@ export function TasksPage() {
     detailsPersonIds,
     detailsProjectIds,
     detailsStatus,
+    detailsTags,
     detailsTitle,
     dispatch,
     expandedTask,
@@ -473,6 +601,105 @@ export function TasksPage() {
     ).unwrap();
 
     dispatch(tasksViewActions.setExpandedTaskId(created.id));
+  };
+
+  const createQuickNote = async (label: string) => {
+    const title = label.trim() || DEFAULT_NOTE_TITLE;
+    const created = await dispatch(
+      dataThunks.notes.createOne({
+        ...createEmptyNoteInput(),
+        title,
+        body: `<h1>${title}</h1><p></p>`,
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const addTag = () => {
+    const value = tagInput.trim();
+    if (!value) {
+      return;
+    }
+
+    const exists = detailsTags.some(
+      (tag) => tag.toLowerCase() === value.toLowerCase(),
+    );
+    if (!exists) {
+      setDetailsTags((previous) => [...previous, value]);
+    }
+    setTagInput("");
+  };
+
+  const createQuickProject = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.projects.createOne(
+        createEmptyProjectInput({
+          name: label.trim() || "New project",
+          paraType: "project",
+        }),
+      ),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickPerson = async (label: string) => {
+    const normalized = label.trim();
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    const firstName = parts[0] || "New";
+    const lastName = parts.slice(1).join(" ") || "Person";
+
+    const created = await dispatch(
+      dataThunks.people.createOne({
+        firstName,
+        lastName,
+        tags: [],
+        email: "",
+        companyIds: [],
+        projectIds: [],
+        noteIds: [],
+        taskIds: [],
+        meetingIds: [],
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickCompany = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.companies.createOne({
+        name: label.trim() || "New company",
+        tags: [],
+        website: "",
+        personIds: [],
+        projectIds: [],
+        noteIds: [],
+        taskIds: [],
+        meetingIds: [],
+      }),
+    ).unwrap();
+
+    return created.id;
+  };
+
+  const createQuickMeeting = async (label: string) => {
+    const created = await dispatch(
+      dataThunks.meetings.createOne({
+        title: label.trim() || "New meeting",
+        tags: [],
+        scheduledFor: new Date().toISOString(),
+        location: "",
+        personIds: [],
+        companyIds: [],
+        projectIds: [],
+        noteIds: [],
+        taskIds: [],
+      }),
+    ).unwrap();
+
+    return created.id;
   };
 
   const toggleComplete = (task: TaskNode, checked: boolean) => {
@@ -728,6 +955,62 @@ export function TasksPage() {
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-xs font-medium">Tags</label>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        value={tagInput}
+                        onChange={(event) => setTagInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addTag();
+                          }
+                        }}
+                        placeholder="Add tag"
+                        list="shared-tag-suggestions-tasks"
+                      />
+                      <Button type="button" variant="outline" onClick={addTag}>
+                        Add
+                      </Button>
+                    </div>
+                    <datalist id="shared-tag-suggestions-tasks">
+                      {sharedTagSuggestions.map((tag) => (
+                        <option key={tag} value={tag} />
+                      ))}
+                    </datalist>
+                    <div className="flex flex-wrap gap-1">
+                      {detailsTags.length === 0 ? (
+                        <p className="text-muted-foreground text-xs">
+                          No tags.
+                        </p>
+                      ) : (
+                        detailsTags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDetailsTags((previous) =>
+                                  previous.filter((value) => value !== tag),
+                                );
+                              }}
+                              className="text-muted-foreground hover:text-foreground"
+                              aria-label={`Remove ${tag} tag`}
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-xs font-medium">Main note</label>
                   <div className="border rounded-md bg-background p-2 space-y-2">
                     <p className="text-xs font-medium truncate">
@@ -761,267 +1044,101 @@ export function TasksPage() {
 
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Linked notes</label>
-                  <div className="space-y-2" ref={linkedNotesRef}>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full justify-between"
-                      onClick={() => setLinkedNotesOpen((value) => !value)}
-                    >
-                      <span className="truncate">
-                        {detailsNoteIds.length === 0
-                          ? "Select linked notes"
-                          : `${detailsNoteIds.length} selected`}
-                      </span>
-                      <ChevronDown className="size-4" />
-                    </Button>
+                  <PropertyLinkPicker
+                    title="Linked notes"
+                    options={linkedNotePropertyOptions}
+                    selectedIds={detailsNoteIds}
+                    onAdd={(id) => {
+                      setDetailsNoteIds((prev) => addUnique(prev, id));
+                    }}
+                    onRemove={(id) => {
+                      if (id === mainNoteId) {
+                        return;
+                      }
 
-                    {linkedNotesOpen && (
-                      <div className="bg-background rounded-md border p-2 space-y-2">
-                        <Input
-                          value={linkedNotesQuery}
-                          onChange={(event) =>
-                            setLinkedNotesQuery(event.target.value)
-                          }
-                          placeholder="Search notes..."
-                        />
-
-                        <div className="max-h-44 overflow-y-auto space-y-1">
-                          {filteredLinkedNoteOptions.length === 0 ? (
-                            <p className="text-muted-foreground px-2 py-1 text-xs">
-                              No matching notes.
-                            </p>
-                          ) : (
-                            filteredLinkedNoteOptions.map((note) => {
-                              const checked = detailsNoteIds.includes(note.id);
-                              const isMain = note.id === mainNoteId;
-
-                              return (
-                                <button
-                                  key={note.id}
-                                  type="button"
-                                  className="hover:bg-muted/60 flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-xs"
-                                  onClick={() => {
-                                    if (isMain) {
-                                      return;
-                                    }
-                                    setDetailsNoteIds((prev) =>
-                                      prev.includes(note.id)
-                                        ? prev.filter(
-                                            (value) => value !== note.id,
-                                          )
-                                        : [...prev, note.id],
-                                    );
-                                  }}
-                                >
-                                  <span className="truncate">{note.title}</span>
-                                  <div className="flex items-center gap-1">
-                                    {isMain ? (
-                                      <span className="text-muted-foreground text-[10px]">
-                                        main
-                                      </span>
-                                    ) : null}
-                                    {checked ? (
-                                      <Check className="text-primary size-3.5" />
-                                    ) : null}
-                                  </div>
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-
-                        {linkedNoteOptions.length > 100 &&
-                          linkedNotesQuery.trim().length === 0 && (
-                            <p className="text-muted-foreground text-[10px] px-1">
-                              Showing first 100 notes. Type to narrow results.
-                            </p>
-                          )}
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-1">
-                      {detailsNoteIds.length === 0 ? (
-                        <p className="text-muted-foreground text-xs">
-                          No linked notes.
-                        </p>
-                      ) : (
-                        detailsNoteIds
-                          .map((id) => notesState.entities[id])
-                          .filter(Boolean)
-                          .map((note) => {
-                            const isMain = note.id === mainNoteId;
-
-                            return (
-                              <span
-                                key={note.id}
-                                className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
-                              >
-                                <span className="truncate max-w-32">
-                                  {note.title}
-                                </span>
-                                {isMain ? (
-                                  <span className="text-[10px] opacity-70">
-                                    main
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setDetailsNoteIds((prev) =>
-                                        prev.filter(
-                                          (value) => value !== note.id,
-                                        ),
-                                      );
-                                    }}
-                                  >
-                                    <X className="size-3" />
-                                  </button>
-                                )}
-                              </span>
-                            );
-                          })
-                      )}
-                    </div>
-                  </div>
+                      setDetailsNoteIds((prev) =>
+                        prev.filter((value) => value !== id),
+                      );
+                    }}
+                    onCreateOption={createQuickNote}
+                    searchPlaceholder="Search notes..."
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Project links</label>
-                  <div className="space-y-1 max-h-24 overflow-y-auto border rounded-md p-2 bg-background">
-                    {projectsState.ids
-                      .map((id) => projectsState.entities[id])
-                      .filter(Boolean)
-                      .filter(
-                        (project) =>
-                          normalizeParaType(project.paraType) !== "archive",
-                      )
-                      .map((project) => {
-                        const checked = detailsProjectIds.includes(project.id);
-                        return (
-                          <label
-                            key={project.id}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setDetailsProjectIds((prev) =>
-                                  prev.includes(project.id)
-                                    ? prev.filter(
-                                        (value) => value !== project.id,
-                                      )
-                                    : [...prev, project.id],
-                                );
-                              }}
-                            />
-                            <span className="truncate">{project.name}</span>
-                          </label>
-                        );
-                      })}
-                  </div>
+                  <PropertyLinkPicker
+                    title="Projects"
+                    options={projectOptions}
+                    selectedIds={detailsProjectIds}
+                    onAdd={(id) => {
+                      setDetailsProjectIds((prev) => addUnique(prev, id));
+                    }}
+                    onRemove={(id) => {
+                      setDetailsProjectIds((prev) =>
+                        prev.filter((value) => value !== id),
+                      );
+                    }}
+                    onCreateOption={createQuickProject}
+                    searchPlaceholder="Search projects..."
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-medium">People links</label>
-                  <div className="space-y-1 max-h-24 overflow-y-auto border rounded-md p-2 bg-background">
-                    {peopleState.ids
-                      .map((id) => peopleState.entities[id])
-                      .filter(Boolean)
-                      .map((person) => {
-                        const checked = detailsPersonIds.includes(person.id);
-                        return (
-                          <label
-                            key={person.id}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setDetailsPersonIds((prev) =>
-                                  prev.includes(person.id)
-                                    ? prev.filter(
-                                        (value) => value !== person.id,
-                                      )
-                                    : [...prev, person.id],
-                                );
-                              }}
-                            />
-                            <span className="truncate">
-                              {person.firstName} {person.lastName}
-                            </span>
-                          </label>
-                        );
-                      })}
-                  </div>
+                  <PropertyLinkPicker
+                    title="People"
+                    options={peopleOptions}
+                    selectedIds={detailsPersonIds}
+                    onAdd={(id) => {
+                      setDetailsPersonIds((prev) => addUnique(prev, id));
+                    }}
+                    onRemove={(id) => {
+                      setDetailsPersonIds((prev) =>
+                        prev.filter((value) => value !== id),
+                      );
+                    }}
+                    onCreateOption={createQuickPerson}
+                    searchPlaceholder="Search people..."
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Company links</label>
-                  <div className="space-y-1 max-h-24 overflow-y-auto border rounded-md p-2 bg-background">
-                    {companiesState.ids
-                      .map((id) => companiesState.entities[id])
-                      .filter(Boolean)
-                      .map((company) => {
-                        const checked = detailsCompanyIds.includes(company.id);
-                        return (
-                          <label
-                            key={company.id}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setDetailsCompanyIds((prev) =>
-                                  prev.includes(company.id)
-                                    ? prev.filter(
-                                        (value) => value !== company.id,
-                                      )
-                                    : [...prev, company.id],
-                                );
-                              }}
-                            />
-                            <span className="truncate">{company.name}</span>
-                          </label>
-                        );
-                      })}
-                  </div>
+                  <PropertyLinkPicker
+                    title="Companies"
+                    options={companyOptions}
+                    selectedIds={detailsCompanyIds}
+                    onAdd={(id) => {
+                      setDetailsCompanyIds((prev) => addUnique(prev, id));
+                    }}
+                    onRemove={(id) => {
+                      setDetailsCompanyIds((prev) =>
+                        prev.filter((value) => value !== id),
+                      );
+                    }}
+                    onCreateOption={createQuickCompany}
+                    searchPlaceholder="Search companies..."
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Meeting links</label>
-                  <div className="space-y-1 max-h-24 overflow-y-auto border rounded-md p-2 bg-background">
-                    {meetingsState.ids
-                      .map((id) => meetingsState.entities[id])
-                      .filter(Boolean)
-                      .map((meeting) => {
-                        const checked = detailsMeetingIds.includes(meeting.id);
-                        return (
-                          <label
-                            key={meeting.id}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setDetailsMeetingIds((prev) =>
-                                  prev.includes(meeting.id)
-                                    ? prev.filter(
-                                        (value) => value !== meeting.id,
-                                      )
-                                    : [...prev, meeting.id],
-                                );
-                              }}
-                            />
-                            <span className="truncate">{meeting.title}</span>
-                          </label>
-                        );
-                      })}
-                  </div>
+                  <PropertyLinkPicker
+                    title="Meetings"
+                    options={meetingOptions}
+                    selectedIds={detailsMeetingIds}
+                    onAdd={(id) => {
+                      setDetailsMeetingIds((prev) => addUnique(prev, id));
+                    }}
+                    onRemove={(id) => {
+                      setDetailsMeetingIds((prev) =>
+                        prev.filter((value) => value !== id),
+                      );
+                    }}
+                    onCreateOption={createQuickMeeting}
+                    searchPlaceholder="Search meetings..."
+                  />
                 </div>
               </>
             )}

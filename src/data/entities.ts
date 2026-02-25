@@ -4,6 +4,7 @@ export interface Project extends BaseEntity {
   name: string;
   paraType: ParaType;
   description?: string;
+  tags: string[];
   personIds: EntityId[];
   companyIds: EntityId[];
   noteIds: EntityId[];
@@ -41,6 +42,7 @@ export interface Task extends BaseEntity {
   title: string;
   description?: string;
   notes?: string;
+  tags: string[];
   status: TaskStatus;
   level: TaskLevel;
   parentTaskId?: EntityId | null;
@@ -54,6 +56,7 @@ export interface Task extends BaseEntity {
 
 export interface Meeting extends BaseEntity {
   title: string;
+  tags: string[];
   scheduledFor: IsoDateString;
   location?: string;
   personIds: EntityId[];
@@ -65,6 +68,7 @@ export interface Meeting extends BaseEntity {
 
 export interface Company extends BaseEntity {
   name: string;
+  tags: string[];
   website?: string;
   personIds: EntityId[];
   projectIds: EntityId[];
@@ -76,6 +80,7 @@ export interface Company extends BaseEntity {
 export interface Person extends BaseEntity {
   firstName: string;
   lastName: string;
+  tags: string[];
   email?: string;
   companyIds: EntityId[];
   projectIds: EntityId[];

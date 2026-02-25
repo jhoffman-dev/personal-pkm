@@ -31,6 +31,7 @@ export function createEmptyProjectInput(params?: {
     name: params?.name?.trim() || "Untitled project",
     paraType: params?.paraType ?? "project",
     description: "",
+    tags: [],
     personIds: [],
     companyIds: [],
     noteIds: [],
