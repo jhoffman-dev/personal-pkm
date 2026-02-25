@@ -1,8 +1,10 @@
 const { createOllamaProvider } = require("./providers/ollama-provider.cjs");
 const { createVertexProvider } = require("./providers/vertex-provider.cjs");
+const { createGeminiProvider } = require("./providers/gemini-provider.cjs");
 
 const providers = {
   ollama: createOllamaProvider(),
+  gemini: createGeminiProvider(),
   vertex: createVertexProvider(),
 };
 
@@ -19,6 +21,7 @@ async function* generateChatReplyStream(request) {
   const streamOptions = {
     provider: request.provider,
     model: request.model,
+    googleAiStudioApiKey: request.googleAiStudioApiKey,
     systemPrompt: request.systemPrompt,
     temperature: request.temperature,
     maxTokens: request.maxTokens,
@@ -54,6 +57,7 @@ async function generateChatReply(request) {
   const reply = await provider.generateChat(request.messages, {
     provider: request.provider,
     model: request.model,
+    googleAiStudioApiKey: request.googleAiStudioApiKey,
     systemPrompt: request.systemPrompt,
     temperature: request.temperature,
     maxTokens: request.maxTokens,

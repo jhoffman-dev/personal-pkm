@@ -19,6 +19,7 @@ Desktop artifacts are output to the `release/` directory.
 ### Providers
 
 - `ollama` (implemented): calls Ollama `/api/chat`
+- `gemini` (implemented): calls Google AI Studio Gemini API
 - `vertex` (stubbed for next stage): provider interface is ready for Vertex AI wiring
 
 ### Environment
@@ -26,6 +27,8 @@ Desktop artifacts are output to the `release/` directory.
 - `PKM_AI_SERVER_PORT` (default `11435`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
 - `OLLAMA_MODEL` (default `qwen3:8b`)
+- `GOOGLE_AI_STUDIO_API_KEY` (required for `gemini` provider)
+- `GEMINI_MODEL` (default `gemini-2.5-flash`)
 
 The first pass is a simple chat interface in `Assistant`. Next pass can add RAG over Notes/Tasks/etc and tool calls for CRUD actions.
 

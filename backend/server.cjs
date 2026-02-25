@@ -25,6 +25,10 @@ function buildChatRequest(body) {
   return {
     provider: typeof body?.provider === "string" ? body.provider : "ollama",
     model: typeof body?.model === "string" ? body.model : undefined,
+    googleAiStudioApiKey:
+      typeof body?.googleAiStudioApiKey === "string"
+        ? body.googleAiStudioApiKey
+        : undefined,
     systemPrompt:
       typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
     temperature:

@@ -2,9 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { sendChatStream, type ChatMessage } from "@/lib/ai-client";
+import { loadAppSettings } from "@/lib/app-settings";
 import { firebaseAuth } from "@/lib/firebase";
 import {
   ASSISTANT_STORAGE_EVENT,
+  type AssistantProvider,
+  createEmptyConversation,
   DEFAULT_CONVERSATION_TITLE,
   deriveConversationTitle,
   hydrateAssistantStateFromFirestore,
@@ -18,6 +21,12 @@ import remarkGfm from "remark-gfm";
 import { useEffect, useMemo, useState } from "react";
 
 const ASSISTANT_PAGE_SOURCE = "assistant-page";
+
+const PROVIDER_DEFAULT_MODELS: Record<AssistantProvider, string> = {
+  ollama: "qwen3:8b",
+  gemini: "gemini-2.5-flash",
+  vertex: "gemini-2.5-flash",
+};
 
 function parseThinkingAndReply(content: string): {
   thinking: string;
@@ -63,6 +72,8 @@ export function AssistantPage() {
     null,
   );
   const [streamingThinking, setStreamingThinking] = useState("");
+  const geminiApiKey = loadAppSettings().googleAiStudioApiKey.trim();
+  const isGeminiKeyConfigured = geminiApiKey.length > 0;
 
   useEffect(() => {
     setAssistantState(loadAssistantState(userId));
@@ -194,6 +205,10 @@ export function AssistantPage() {
         {
           provider: assistantState.provider,
           model: assistantState.model.trim() || undefined,
+          googleAiStudioApiKey:
+            assistantState.provider === "gemini"
+              ? geminiApiKey || undefined
+              : undefined,
           systemPrompt: assistantState.systemPrompt.trim() || undefined,
           authToken,
           userId,
@@ -293,6 +308,21 @@ export function AssistantPage() {
     }
   };
 
+  const createNewChat = () => {
+    if (isSending) {
+      return;
+    }
+
+    const conversation = createEmptyConversation();
+    setError(null);
+    setPrompt("");
+    setAssistantState((previous) => ({
+      ...previous,
+      activeConversationId: conversation.id,
+      conversations: [conversation, ...previous.conversations],
+    }));
+  };
+
   return (
     <section className="h-[calc(100svh-41px)] p-6">
       <Card className="h-full py-0">
@@ -301,17 +331,31 @@ export function AssistantPage() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="mr-2 text-lg font-semibold">Assistant</h2>
 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={createNewChat}
+                disabled={isSending}
+              >
+                New chat
+              </Button>
+
               <select
                 value={assistantState.provider}
                 onChange={(event) =>
                   setAssistantState((previous) => ({
                     ...previous,
-                    provider: event.target.value as "ollama" | "vertex",
+                    provider: event.target.value as AssistantProvider,
+                    model:
+                      PROVIDER_DEFAULT_MODELS[
+                        event.target.value as AssistantProvider
+                      ],
                   }))
                 }
                 className="border-input bg-background h-9 rounded-md border px-3 text-sm"
               >
                 <option value="ollama">Ollama</option>
+                <option value="gemini">Gemini (AI Studio)</option>
                 <option value="vertex">Vertex (future)</option>
               </select>
 
@@ -326,6 +370,18 @@ export function AssistantPage() {
                 placeholder="Model (e.g. qwen3:8b)"
                 className="max-w-52"
               />
+
+              {assistantState.provider === "gemini" ? (
+                <span
+                  className={`rounded-md border px-2 py-1 text-xs ${
+                    isGeminiKeyConfigured
+                      ? "bg-muted text-foreground"
+                      : "text-destructive"
+                  }`}
+                >
+                  Gemini key {isGeminiKeyConfigured ? "configured" : "missing"}
+                </span>
+              ) : null}
             </div>
 
             <textarea

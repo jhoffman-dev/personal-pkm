@@ -6,8 +6,9 @@ export type ChatMessage = {
 };
 
 export type ChatRequest = {
-  provider?: "ollama" | "vertex";
+  provider?: "ollama" | "gemini" | "vertex";
   model?: string;
+  googleAiStudioApiKey?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;

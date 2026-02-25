@@ -15,7 +15,7 @@ export type AssistantConversation = {
   messages: UiMessage[];
 };
 
-export type AssistantProvider = "ollama" | "vertex";
+export type AssistantProvider = "ollama" | "gemini" | "vertex";
 
 export type StoredAssistantState = {
   activeConversationId: string | null;
