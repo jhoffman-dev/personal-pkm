@@ -18,6 +18,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { getRouteTitle, isRouteActive, navItems } from "@/routes/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { deleteAssistantChat, upsertAssistantChat } from "@/lib/ai-client";
 import {
   dataActions,
   dataThunks,
@@ -34,9 +35,10 @@ import {
 } from "@/lib/project-defaults";
 import {
   ASSISTANT_STORAGE_EVENT,
+  type AssistantConversation,
   DEFAULT_CONVERSATION_TITLE,
   createEmptyConversation,
-  getAssistantStorageKey,
+  hydrateAssistantStateFromFirestore,
   loadAssistantState,
   saveAssistantState,
   sortAssistantConversations,
@@ -78,7 +80,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isProjectsRoute = isRouteActive(pathname, "/projects");
   const isAssistantRoute = isRouteActive(pathname, "/assistant");
   const assistantUserId = firebaseAuth.currentUser?.uid ?? "guest";
-  const assistantStorageKey = getAssistantStorageKey(assistantUserId);
   const assistantSourceId = React.useMemo(() => crypto.randomUUID(), []);
   const [assistantState, setAssistantState] =
     React.useState<StoredAssistantState>(() =>
@@ -143,6 +144,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     setAssistantState(loadAssistantState(assistantUserId));
+
+    void hydrateAssistantStateFromFirestore(assistantUserId)
+      .then((nextState) => {
+        setAssistantState(nextState);
+      })
+      .catch(() => {
+        // Keep in-memory state if backend hydration fails.
+      });
   }, [assistantUserId, isAssistantRoute]);
 
   React.useEffect(() => {
@@ -156,35 +165,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         return;
       }
 
-      if (
-        customEvent.detail?.key &&
-        customEvent.detail.key !== assistantStorageKey
-      ) {
-        return;
-      }
-
-      setAssistantState(loadAssistantState(assistantUserId));
-    };
-
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== assistantStorageKey) {
-        return;
-      }
-
       setAssistantState(loadAssistantState(assistantUserId));
     };
 
     window.addEventListener(ASSISTANT_STORAGE_EVENT, onAssistantStorageChanged);
-    window.addEventListener("storage", onStorage);
 
     return () => {
       window.removeEventListener(
         ASSISTANT_STORAGE_EVENT,
         onAssistantStorageChanged,
       );
-      window.removeEventListener("storage", onStorage);
     };
-  }, [assistantSourceId, assistantStorageKey, assistantUserId]);
+  }, [assistantSourceId, assistantUserId]);
 
   const updateAssistantState = React.useCallback(
     (updater: (previous: StoredAssistantState) => StoredAssistantState) => {
@@ -202,6 +194,67 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     [assistantState.conversations],
   );
 
+  const persistAssistantConversation = React.useCallback(
+    async (conversation: AssistantConversation) => {
+      if (!firebaseAuth.currentUser) {
+        return;
+      }
+
+      const authToken = await firebaseAuth.currentUser
+        .getIdToken()
+        .catch(() => null);
+
+      if (!authToken) {
+        return;
+      }
+
+      await upsertAssistantChat({
+        authToken,
+        userId: assistantUserId,
+        conversationId: conversation.id,
+        title: conversation.title,
+        pinned: conversation.pinned,
+        updatedAt: conversation.updatedAt,
+        provider: assistantState.provider,
+        model: assistantState.model,
+        systemPrompt: assistantState.systemPrompt,
+        transcript: conversation.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      });
+    },
+    [
+      assistantState.model,
+      assistantState.provider,
+      assistantState.systemPrompt,
+      assistantUserId,
+    ],
+  );
+
+  const removeAssistantConversationFromFirestore = React.useCallback(
+    async (conversationId: string) => {
+      if (!firebaseAuth.currentUser) {
+        return;
+      }
+
+      const authToken = await firebaseAuth.currentUser
+        .getIdToken()
+        .catch(() => null);
+
+      if (!authToken) {
+        return;
+      }
+
+      await deleteAssistantChat({
+        authToken,
+        userId: assistantUserId,
+        conversationId,
+      });
+    },
+    [assistantUserId],
+  );
+
   const createAssistantConversation = () => {
     const conversation = createEmptyConversation();
     updateAssistantState((previous) => ({
@@ -209,17 +262,37 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       activeConversationId: conversation.id,
       conversations: [conversation, ...previous.conversations],
     }));
+
+    void persistAssistantConversation(conversation).catch(() => {
+      // Keep local in-memory state if persistence fails.
+    });
   };
 
   const togglePinnedAssistantConversation = (conversationId: string) => {
+    const existingConversation = assistantState.conversations.find(
+      (conversation) => conversation.id === conversationId,
+    );
+
+    if (!existingConversation) {
+      return;
+    }
+
+    const updatedConversation: AssistantConversation = {
+      ...existingConversation,
+      pinned: !existingConversation.pinned,
+      updatedAt: new Date().toISOString(),
+    };
+
     updateAssistantState((previous) => ({
       ...previous,
       conversations: previous.conversations.map((conversation) =>
-        conversation.id === conversationId
-          ? { ...conversation, pinned: !conversation.pinned }
-          : conversation,
+        conversation.id === conversationId ? updatedConversation : conversation,
       ),
     }));
+
+    void persistAssistantConversation(updatedConversation).catch(() => {
+      // Keep local in-memory state if persistence fails.
+    });
   };
 
   const startRenamingAssistantConversation = (
@@ -237,15 +310,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const saveAssistantConversationRename = (conversationId: string) => {
     const nextTitle = renameValue.trim() || DEFAULT_CONVERSATION_TITLE;
+    const existingConversation = assistantState.conversations.find(
+      (conversation) => conversation.id === conversationId,
+    );
+
+    if (!existingConversation) {
+      cancelRenamingAssistantConversation();
+      return;
+    }
+
+    const updatedConversation: AssistantConversation = {
+      ...existingConversation,
+      title: nextTitle,
+      updatedAt: new Date().toISOString(),
+    };
 
     updateAssistantState((previous) => ({
       ...previous,
       conversations: previous.conversations.map((conversation) =>
-        conversation.id === conversationId
-          ? { ...conversation, title: nextTitle }
-          : conversation,
+        conversation.id === conversationId ? updatedConversation : conversation,
       ),
     }));
+
+    void persistAssistantConversation(updatedConversation).catch(() => {
+      // Keep local in-memory state if persistence fails.
+    });
 
     cancelRenamingAssistantConversation();
   };
@@ -287,6 +376,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (renamingConversationId === conversationId) {
       cancelRenamingAssistantConversation();
     }
+
+    void removeAssistantConversationFromFirestore(conversationId).catch(() => {
+      // Keep local in-memory state if persistence fails.
+    });
   };
 
   const projectsWithTaskCount = React.useMemo(

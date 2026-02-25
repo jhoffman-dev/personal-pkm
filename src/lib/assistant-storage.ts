@@ -1,4 +1,5 @@
 import { firebaseAuth } from "@/lib/firebase";
+import { listAssistantChats, type ChatMessage } from "@/lib/ai-client";
 
 export type UiMessage = {
   id: string;
@@ -29,6 +30,8 @@ export const DEFAULT_SYSTEM_PROMPT =
 export const DEFAULT_MODEL = "qwen3:8b";
 export const DEFAULT_CONVERSATION_TITLE = "New chat";
 export const ASSISTANT_STORAGE_EVENT = "pkm:assistant:storage-changed";
+
+const assistantStateCache = new Map<string, StoredAssistantState>();
 
 export function getAssistantStorageKey(uid?: string | null): string {
   const resolvedUid = uid ?? firebaseAuth.currentUser?.uid ?? "guest";
@@ -96,56 +99,27 @@ function asConversations(value: unknown): AssistantConversation[] {
     }));
 }
 
+function defaultAssistantState(): StoredAssistantState {
+  const fallback = createEmptyConversation();
+  return {
+    activeConversationId: fallback.id,
+    conversations: [fallback],
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    provider: "ollama",
+    model: DEFAULT_MODEL,
+  };
+}
+
 export function loadAssistantState(uid?: string | null): StoredAssistantState {
   const storageKey = getAssistantStorageKey(uid);
-
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    const parsed = raw
-      ? (JSON.parse(raw) as Partial<StoredAssistantState>)
-      : null;
-
-    const loadedConversations = asConversations(parsed?.conversations);
-    const conversations =
-      loadedConversations.length > 0
-        ? loadedConversations
-        : [createEmptyConversation()];
-
-    const candidateActiveId =
-      typeof parsed?.activeConversationId === "string"
-        ? parsed.activeConversationId
-        : null;
-
-    const activeConversationId = conversations.some(
-      (conversation) => conversation.id === candidateActiveId,
-    )
-      ? candidateActiveId
-      : (conversations[0]?.id ?? null);
-
-    return {
-      activeConversationId,
-      conversations,
-      systemPrompt:
-        typeof parsed?.systemPrompt === "string" &&
-        parsed.systemPrompt.trim().length > 0
-          ? parsed.systemPrompt
-          : DEFAULT_SYSTEM_PROMPT,
-      provider: parsed?.provider === "vertex" ? "vertex" : "ollama",
-      model:
-        typeof parsed?.model === "string" && parsed.model.trim().length > 0
-          ? parsed.model
-          : DEFAULT_MODEL,
-    };
-  } catch {
-    const fallback = createEmptyConversation();
-    return {
-      activeConversationId: fallback.id,
-      conversations: [fallback],
-      systemPrompt: DEFAULT_SYSTEM_PROMPT,
-      provider: "ollama",
-      model: DEFAULT_MODEL,
-    };
+  const cached = assistantStateCache.get(storageKey);
+  if (cached) {
+    return cached;
   }
+
+  const next = defaultAssistantState();
+  assistantStateCache.set(storageKey, next);
+  return next;
 }
 
 export function sortAssistantConversations(
@@ -168,7 +142,7 @@ export function saveAssistantState(
   source = "assistant",
 ): void {
   const storageKey = getAssistantStorageKey(uid);
-  window.localStorage.setItem(storageKey, JSON.stringify(state));
+  assistantStateCache.set(storageKey, state);
   window.dispatchEvent(
     new CustomEvent(ASSISTANT_STORAGE_EVENT, {
       detail: {
@@ -177,4 +151,60 @@ export function saveAssistantState(
       },
     }),
   );
+}
+
+export async function hydrateAssistantStateFromFirestore(
+  uid?: string | null,
+): Promise<StoredAssistantState> {
+  const resolvedUid = uid ?? firebaseAuth.currentUser?.uid ?? null;
+  if (!resolvedUid || !firebaseAuth.currentUser) {
+    return loadAssistantState(resolvedUid);
+  }
+
+  const authToken = await firebaseAuth.currentUser.getIdToken();
+  const { chats } = await listAssistantChats({
+    authToken,
+    userId: resolvedUid,
+  });
+
+  const conversations = asConversations(
+    chats.map((chat) => ({
+      id: chat.id,
+      title: chat.title,
+      pinned: chat.pinned,
+      updatedAt: chat.updatedAt,
+      messages: Array.isArray(chat.transcript)
+        ? (chat.transcript as ChatMessage[])
+            .filter(
+              (message) =>
+                message &&
+                (message.role === "user" || message.role === "assistant") &&
+                typeof message.content === "string",
+            )
+            .map((message) => ({
+              id: crypto.randomUUID(),
+              role: message.role as "user" | "assistant",
+              content: message.content,
+            }))
+        : [],
+    })),
+  );
+
+  const state = loadAssistantState(resolvedUid);
+  const nextConversations =
+    conversations.length > 0 ? conversations : [createEmptyConversation()];
+  const activeConversationId = nextConversations.some(
+    (conversation) => conversation.id === state.activeConversationId,
+  )
+    ? state.activeConversationId
+    : nextConversations[0].id;
+
+  const nextState: StoredAssistantState = {
+    ...state,
+    activeConversationId,
+    conversations: nextConversations,
+  };
+
+  saveAssistantState(nextState, resolvedUid, "assistant-hydrate");
+  return nextState;
 }

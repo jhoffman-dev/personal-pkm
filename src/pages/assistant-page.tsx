@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { sendChat, type ChatMessage } from "@/lib/ai-client";
+import { sendChatStream, type ChatMessage } from "@/lib/ai-client";
 import { firebaseAuth } from "@/lib/firebase";
 import {
   ASSISTANT_STORAGE_EVENT,
   DEFAULT_CONVERSATION_TITLE,
   deriveConversationTitle,
-  getAssistantStorageKey,
+  hydrateAssistantStateFromFirestore,
   loadAssistantState,
   saveAssistantState,
   type StoredAssistantState,
@@ -19,9 +19,39 @@ import { useEffect, useMemo, useState } from "react";
 
 const ASSISTANT_PAGE_SOURCE = "assistant-page";
 
+function parseThinkingAndReply(content: string): {
+  thinking: string;
+  reply: string;
+} {
+  const openTag = "<think>";
+  const closeTag = "</think>";
+  const openIndex = content.indexOf(openTag);
+
+  if (openIndex === -1) {
+    return {
+      thinking: "",
+      reply: content,
+    };
+  }
+
+  const thinkingStart = openIndex + openTag.length;
+  const closeIndex = content.indexOf(closeTag, thinkingStart);
+
+  if (closeIndex === -1) {
+    return {
+      thinking: content.slice(thinkingStart).trim(),
+      reply: "",
+    };
+  }
+
+  return {
+    thinking: content.slice(thinkingStart, closeIndex).trim(),
+    reply: content.slice(closeIndex + closeTag.length).trimStart(),
+  };
+}
+
 export function AssistantPage() {
   const userId = firebaseAuth.currentUser?.uid ?? "guest";
-  const storageKey = getAssistantStorageKey(userId);
   const [assistantState, setAssistantState] = useState<StoredAssistantState>(
     () => loadAssistantState(userId),
   );
@@ -29,10 +59,22 @@ export function AssistantPage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
+    null,
+  );
+  const [streamingThinking, setStreamingThinking] = useState("");
 
   useEffect(() => {
     setAssistantState(loadAssistantState(userId));
     setIsHydrated(true);
+
+    void hydrateAssistantStateFromFirestore(userId)
+      .then((nextState) => {
+        setAssistantState(nextState);
+      })
+      .catch(() => {
+        // Keep in-memory state if backend hydration fails.
+      });
   }, [userId]);
 
   useEffect(() => {
@@ -53,32 +95,18 @@ export function AssistantPage() {
         return;
       }
 
-      if (customEvent.detail?.key && customEvent.detail.key !== storageKey) {
-        return;
-      }
-
-      setAssistantState(loadAssistantState(userId));
-    };
-
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== storageKey) {
-        return;
-      }
-
       setAssistantState(loadAssistantState(userId));
     };
 
     window.addEventListener(ASSISTANT_STORAGE_EVENT, onAssistantStorageChanged);
-    window.addEventListener("storage", onStorage);
 
     return () => {
       window.removeEventListener(
         ASSISTANT_STORAGE_EVENT,
         onAssistantStorageChanged,
       );
-      window.removeEventListener("storage", onStorage);
     };
-  }, [storageKey, userId]);
+  }, [userId]);
 
   const activeConversation = useMemo(
     () =>
@@ -113,9 +141,19 @@ export function AssistantPage() {
       role: "user",
       content: value,
     };
+    const assistantMessageId = crypto.randomUUID();
+    const assistantPlaceholder: UiMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+    };
 
-    const nextMessages = [...messages, userMessage];
+    const nextMessages = [...messages, userMessage, assistantPlaceholder];
     const now = new Date().toISOString();
+    const conversationTitle =
+      activeConversation?.title === DEFAULT_CONVERSATION_TITLE
+        ? deriveConversationTitle(value)
+        : (activeConversation?.title ?? DEFAULT_CONVERSATION_TITLE);
 
     setAssistantState((previous) => ({
       ...previous,
@@ -141,20 +179,73 @@ export function AssistantPage() {
     setPrompt("");
     setError(null);
     setIsSending(true);
+    setStreamingMessageId(assistantMessageId);
+    setStreamingThinking("Thinking...");
 
     try {
-      const result = await sendChat({
-        provider: assistantState.provider,
-        model: assistantState.model.trim() || undefined,
-        systemPrompt: assistantState.systemPrompt.trim() || undefined,
-        messages: [...chatHistory, { role: "user", content: value }],
-      });
+      const authToken = await firebaseAuth.currentUser
+        ?.getIdToken()
+        .catch(() => undefined);
 
-      const assistantMessage: UiMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: result.reply,
-      };
+      let rawStreamContent = "";
+      let streamReportedDone = false;
+
+      await sendChatStream(
+        {
+          provider: assistantState.provider,
+          model: assistantState.model.trim() || undefined,
+          systemPrompt: assistantState.systemPrompt.trim() || undefined,
+          authToken,
+          userId,
+          conversationId,
+          conversationTitle,
+          messages: [...chatHistory, { role: "user", content: value }],
+        },
+        (chunk) => {
+          if (chunk.error) {
+            throw new Error(chunk.error);
+          }
+
+          if (typeof chunk.delta === "string" && chunk.delta.length > 0) {
+            rawStreamContent += chunk.delta;
+            const parsed = parseThinkingAndReply(rawStreamContent);
+            setStreamingThinking(parsed.thinking || "Thinking...");
+
+            setAssistantState((previous) => ({
+              ...previous,
+              conversations: previous.conversations.map((conversation) =>
+                conversation.id === conversationId
+                  ? {
+                      ...conversation,
+                      updatedAt: new Date().toISOString(),
+                      messages: conversation.messages.map((message) =>
+                        message.id === assistantMessageId
+                          ? {
+                              ...message,
+                              content: parsed.reply,
+                            }
+                          : message,
+                      ),
+                    }
+                  : conversation,
+              ),
+            }));
+          }
+
+          if (chunk.done) {
+            streamReportedDone = true;
+          }
+        },
+      );
+
+      if (!streamReportedDone && rawStreamContent.length === 0) {
+        throw new Error(
+          "No streamed response was received from the AI backend",
+        );
+      }
+
+      const parsed = parseThinkingAndReply(rawStreamContent);
+      const finalReply = parsed.reply || rawStreamContent;
 
       setAssistantState((previous) => ({
         ...previous,
@@ -163,7 +254,14 @@ export function AssistantPage() {
             ? {
                 ...conversation,
                 updatedAt: new Date().toISOString(),
-                messages: [...conversation.messages, assistantMessage],
+                messages: conversation.messages.map((message) =>
+                  message.id === assistantMessageId
+                    ? {
+                        ...message,
+                        content: finalReply,
+                      }
+                    : message,
+                ),
               }
             : conversation,
         ),
@@ -174,8 +272,24 @@ export function AssistantPage() {
           ? requestError.message
           : "Failed to call AI backend",
       );
+
+      setAssistantState((previous) => ({
+        ...previous,
+        conversations: previous.conversations.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                messages: conversation.messages.filter(
+                  (message) => message.id !== assistantMessageId,
+                ),
+              }
+            : conversation,
+        ),
+      }));
     } finally {
       setIsSending(false);
+      setStreamingMessageId(null);
+      setStreamingThinking("");
     }
   };
 
@@ -243,10 +357,19 @@ export function AssistantPage() {
                     }`}
                   >
                     {message.role === "assistant" ? (
-                      <div className="[&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:italic [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_h1]:mt-1 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-1 [&_h2]:text-base [&_h2]:font-semibold [&_li]:my-0.5 [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_pre]:bg-muted [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:ml-5 [&_ul]:list-disc">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </ReactMarkdown>
+                      <div className="space-y-2">
+                        {streamingMessageId === message.id ? (
+                          <div className="bg-muted text-muted-foreground rounded-md border px-2 py-1 text-xs whitespace-pre-wrap">
+                            <p className="font-medium">Thinking</p>
+                            <p>{streamingThinking || "Thinking..."}</p>
+                          </div>
+                        ) : null}
+
+                        <div className="[&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:italic [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_h1]:mt-1 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-1 [&_h2]:text-base [&_h2]:font-semibold [&_li]:my-0.5 [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_pre]:bg-muted [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:ml-5 [&_ul]:list-disc">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     ) : (
                       message.content

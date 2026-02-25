@@ -14,6 +14,41 @@ function resolveProvider(providerId) {
   return providers[providerId] || providers.ollama;
 }
 
+async function* generateChatReplyStream(request) {
+  const provider = resolveProvider(request.provider);
+  const streamOptions = {
+    provider: request.provider,
+    model: request.model,
+    systemPrompt: request.systemPrompt,
+    temperature: request.temperature,
+    maxTokens: request.maxTokens,
+  };
+
+  if (typeof provider.generateChatStream === "function") {
+    for await (const chunk of provider.generateChatStream(
+      request.messages,
+      streamOptions,
+    )) {
+      yield {
+        provider: provider.id,
+        model: request.model || null,
+        ...chunk,
+      };
+    }
+
+    return;
+  }
+
+  const reply = await provider.generateChat(request.messages, streamOptions);
+  yield {
+    provider: provider.id,
+    model: request.model || null,
+    delta: reply,
+    done: true,
+    reply,
+  };
+}
+
 async function generateChatReply(request) {
   const provider = resolveProvider(request.provider);
   const reply = await provider.generateChat(request.messages, {
@@ -33,4 +68,5 @@ async function generateChatReply(request) {
 
 module.exports = {
   generateChatReply,
+  generateChatReplyStream,
 };
