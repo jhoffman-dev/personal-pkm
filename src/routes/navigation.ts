@@ -4,6 +4,7 @@ import {
   ChartGantt,
   LayoutDashboard,
   ListTodo,
+  Network,
   NotebookPen,
   Presentation,
   SquareUser,
@@ -50,6 +51,11 @@ export const navItems: NavItem[] = [
     title: "People",
     to: "/people",
     icon: SquareUser,
+  },
+  {
+    title: "Graph",
+    to: "/graph",
+    icon: Network,
   },
   {
     title: "Assistant",
