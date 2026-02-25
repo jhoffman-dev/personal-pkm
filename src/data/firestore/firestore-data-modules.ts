@@ -126,6 +126,24 @@ function chunkArray<T>(values: T[], size: number): T[][] {
   return chunks;
 }
 
+function sanitizeForFirestore<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, sanitizeForFirestore(item)]);
+
+    return Object.fromEntries(entries) as T;
+  }
+
+  return value;
+}
+
 class FirestoreRelationalDataModule<
   TCollection extends EntityCollectionName,
   TCreate extends object,
@@ -214,9 +232,13 @@ class FirestoreRelationalDataModule<
     } as CollectionEntityMap[TCollection];
 
     const normalized = this.normalizeRelations(entity);
-    await setDoc(this.docRef(normalized.id), normalized);
-    await this.syncBidirectionalRelations(normalized, null);
-    return normalized;
+    const persisted = sanitizeForFirestore(
+      normalized,
+    ) as CollectionEntityMap[TCollection];
+
+    await setDoc(this.docRef(persisted.id), persisted);
+    await this.syncBidirectionalRelations(persisted, null);
+    return persisted;
   }
 
   async update(
@@ -235,9 +257,13 @@ class FirestoreRelationalDataModule<
     } as CollectionEntityMap[TCollection];
 
     const normalized = this.normalizeRelations(updated);
-    await setDoc(this.docRef(id), normalized);
-    await this.syncBidirectionalRelations(normalized, existing);
-    return normalized;
+    const persisted = sanitizeForFirestore(
+      normalized,
+    ) as CollectionEntityMap[TCollection];
+
+    await setDoc(this.docRef(id), persisted);
+    await this.syncBidirectionalRelations(persisted, existing);
+    return persisted;
   }
 
   async delete(id: EntityId): Promise<boolean> {
