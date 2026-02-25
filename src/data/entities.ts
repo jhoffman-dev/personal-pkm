@@ -69,6 +69,9 @@ export interface Meeting extends BaseEntity {
 export interface Company extends BaseEntity {
   name: string;
   tags: string[];
+  email?: string;
+  phone?: string;
+  address?: string;
   website?: string;
   personIds: EntityId[];
   projectIds: EntityId[];
@@ -82,6 +85,8 @@ export interface Person extends BaseEntity {
   lastName: string;
   tags: string[];
   email?: string;
+  phone?: string;
+  address?: string;
   companyIds: EntityId[];
   projectIds: EntityId[];
   noteIds: EntityId[];

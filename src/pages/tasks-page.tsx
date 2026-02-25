@@ -22,6 +22,7 @@ import {
   TASK_STATES,
   normalizeTaskStatus,
 } from "@/lib/task-defaults";
+import { addUnique } from "@/lib/entity-link-utils";
 import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor";
 import {
   dataThunks,
@@ -31,10 +32,6 @@ import {
 } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-
-function addUnique(values: string[], id: string): string[] {
-  return values.includes(id) ? values : [...values, id];
-}
 
 type TaskNode = Task & { children: TaskNode[] };
 

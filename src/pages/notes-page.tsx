@@ -11,6 +11,7 @@ import {
   DEFAULT_NOTE_BODY,
   DEFAULT_NOTE_TITLE,
 } from "@/lib/note-defaults";
+import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import { normalizeParaType } from "@/lib/project-defaults";
 import { createEmptyProjectInput } from "@/lib/project-defaults";
 import { createEmptyTaskInput } from "@/lib/task-defaults";
@@ -28,29 +29,6 @@ type LinkOption = {
   id: string;
   label: string;
 };
-
-function addUnique(values: string[], id: string): string[] {
-  return values.includes(id) ? values : [...values, id];
-}
-
-function equalSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-
-  const setA = new Set(a);
-  if (setA.size !== new Set(b).size) {
-    return false;
-  }
-
-  for (const value of b) {
-    if (!setA.has(value)) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 function getTagColorStyle(tag: string): CSSProperties {
   let hash = 0;

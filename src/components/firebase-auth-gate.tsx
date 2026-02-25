@@ -18,7 +18,6 @@ import {
   setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
-  signOut,
   type User,
 } from "firebase/auth";
 import { useEffect, useState, type ReactNode } from "react";
@@ -121,11 +120,6 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
-    await signOut(firebaseAuth);
-    setUser(null);
-  };
-
   if (isLoading) {
     return (
       <section className="flex h-svh items-center justify-center p-6">
@@ -213,19 +207,5 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
-    <div className="h-svh">
-      <div className="bg-muted/20 border-b px-4 py-2 text-xs">
-        Signed in as {user.email ?? user.uid}
-        <button
-          type="button"
-          onClick={() => void logout()}
-          className="text-primary hover:underline ml-3"
-        >
-          Sign out
-        </button>
-      </div>
-      <div className="h-[calc(100svh-33px)]">{children}</div>
-    </div>
-  );
+  return <div className="h-svh">{children}</div>;
 }

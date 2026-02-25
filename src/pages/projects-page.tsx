@@ -6,6 +6,7 @@ import {
   type PropertyOption,
 } from "@/components/property-link-picker";
 import type { ParaType } from "@/data/entities";
+import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import {
   PARA_TYPES,
   PARA_TYPE_LABELS,
@@ -22,29 +23,6 @@ import {
 } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-
-function addUnique(values: string[], id: string): string[] {
-  return values.includes(id) ? values : [...values, id];
-}
-
-function equalSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-
-  const setA = new Set(a);
-  if (setA.size !== new Set(b).size) {
-    return false;
-  }
-
-  for (const value of b) {
-    if (!setA.has(value)) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 function DashboardListCard({
   title,
