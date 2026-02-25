@@ -29,6 +29,35 @@ Desktop artifacts are output to the `release/` directory.
 
 The first pass is a simple chat interface in `Assistant`. Next pass can add RAG over Notes/Tasks/etc and tool calls for CRUD actions.
 
+## Firebase Auth + Firestore
+
+- App now uses Firebase Auth login (Google) before loading workspace.
+- Data modules switch to Firestore after sign-in and scope data by user path:
+  - `users/{uid}/projects`
+  - `users/{uid}/notes`
+  - `users/{uid}/tasks`
+  - `users/{uid}/meetings`
+  - `users/{uid}/companies`
+  - `users/{uid}/people`
+- Firestore module retains two-way relation syncing behavior used by local modules.
+
+### Firebase Setup Checklist
+
+- Copy `.env.example` to `.env` and fill in your Firebase Web App values.
+- Enable Google provider in Firebase Auth.
+- Add localhost app domain (for development) and your production domain.
+- Add Firestore security rules that restrict reads/writes to `request.auth.uid == uid`.
+
+### Firebase Environment Variables
+
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_MEASUREMENT_ID` (optional)
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

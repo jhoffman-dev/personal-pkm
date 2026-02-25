@@ -52,6 +52,58 @@ function createMainWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (url === "about:blank") {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: 500,
+            height: 700,
+            autoHideMenuBar: true,
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true,
+            },
+          },
+        };
+      }
+
+      const parsed = new URL(url);
+      const hostname = parsed.hostname.toLowerCase();
+
+      const isFirebaseOrGoogleAuthWindow =
+        hostname === "accounts.google.com" ||
+        hostname.endsWith(".google.com") ||
+        hostname.endsWith(".googleusercontent.com") ||
+        hostname.endsWith(".firebaseapp.com") ||
+        hostname.endsWith(".web.app") ||
+        parsed.pathname.includes("/__/auth/") ||
+        parsed.pathname.includes("/o/oauth2/");
+
+      if (isFirebaseOrGoogleAuthWindow) {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: 500,
+            height: 700,
+            autoHideMenuBar: true,
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true,
+            },
+          },
+        };
+      }
+    } catch {
+      // fall through to deny + external open
+    }
+
+    if (url.includes("/__/auth/") || url.includes("accounts.google.com")) {
+      return { action: "deny" };
+    }
+
     shell.openExternal(url);
     return { action: "deny" };
   });

@@ -79,6 +79,7 @@ import { handleImageUpload, MAX_FILE_SIZE } from "@/lib/tiptap-utils";
 import "@/components/tiptap-templates/simple/simple-editor.scss";
 
 const DEFAULT_NOTE_CONTENT = DEFAULT_NOTE_BODY;
+const DEFAULT_STANDALONE_CONTENT = "<p></p>";
 
 const MainToolbarContent = ({
   onHighlighterClick,
@@ -193,6 +194,7 @@ export function SimpleEditor({
   onTitleChange?: (title: string) => void;
   className?: string;
 }) {
+  const hasLinkedTitle = typeof onTitleChange === "function";
   const isMobile = useIsBreakpoint();
   const { height } = useWindowSize();
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">(
@@ -275,10 +277,37 @@ export function SimpleEditor({
 
   const emitValueChanges = useCallback(
     (editorInstance: Editor) => {
-      onTitleChange?.(extractTitle(editorInstance));
-      onContentChange?.(editorInstance.getHTML());
+      const html = editorInstance.getHTML();
+
+      if (hasLinkedTitle) {
+        onTitleChange?.(extractTitle(editorInstance));
+        onContentChange?.(html);
+        return;
+      }
+
+      if (typeof window === "undefined") {
+        onContentChange?.(html);
+        return;
+      }
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const first = doc.body.firstElementChild;
+      const firstTag = first?.tagName.toLowerCase();
+      const firstText = first?.textContent?.trim() ?? "";
+      const isLegacyTitleHeading =
+        firstTag === "h1" &&
+        (firstText.length === 0 || firstText === DEFAULT_NOTE_TITLE);
+
+      if (isLegacyTitleHeading) {
+        first?.remove();
+      }
+
+      const normalized =
+        doc.body.innerHTML.trim() || DEFAULT_STANDALONE_CONTENT;
+      onContentChange?.(normalized);
     },
-    [extractTitle, onContentChange, onTitleChange],
+    [extractTitle, hasLinkedTitle, onContentChange, onTitleChange],
   );
 
   const editor = useEditor({
@@ -295,13 +324,13 @@ export function SimpleEditor({
         const files = Array.from(event.clipboardData?.files ?? []);
         const hasImages = files.some((file) => file.type.startsWith("image/"));
 
-        if (!hasImages) {
-          return false;
+        if (hasImages) {
+          event.preventDefault();
+          void insertImagesFromFiles(view, files);
+          return true;
         }
 
-        event.preventDefault();
-        void insertImagesFromFiles(view, files);
-        return true;
+        return false;
       },
     },
     extensions: [
@@ -330,13 +359,19 @@ export function SimpleEditor({
         onError: (error) => console.error("Upload failed:", error),
       }),
     ],
-    content: content ?? DEFAULT_NOTE_CONTENT,
+    content:
+      content ??
+      (hasLinkedTitle ? DEFAULT_NOTE_CONTENT : DEFAULT_STANDALONE_CONTENT),
     onCreate: ({ editor: editorInstance }) => {
-      ensureFirstLineHeading(editorInstance);
+      if (hasLinkedTitle) {
+        ensureFirstLineHeading(editorInstance);
+      }
       emitValueChanges(editorInstance);
     },
     onUpdate: ({ editor: editorInstance }) => {
-      ensureFirstLineHeading(editorInstance);
+      if (hasLinkedTitle) {
+        ensureFirstLineHeading(editorInstance);
+      }
       emitValueChanges(editorInstance);
     },
   });
@@ -357,13 +392,43 @@ export function SimpleEditor({
       return;
     }
 
-    const current = editor.getHTML();
-    if (current !== content) {
-      editor.commands.setContent(content, { emitUpdate: false });
-      ensureFirstLineHeading(editor);
-      onTitleChange?.(extractTitle(editor));
+    const parser = new DOMParser();
+    const inputDoc = parser.parseFromString(content, "text/html");
+
+    if (!hasLinkedTitle) {
+      const first = inputDoc.body.firstElementChild;
+      const firstTag = first?.tagName.toLowerCase();
+      const firstText = first?.textContent?.trim() ?? "";
+      const isLegacyTitleHeading =
+        firstTag === "h1" &&
+        (firstText.length === 0 || firstText === DEFAULT_NOTE_TITLE);
+
+      if (isLegacyTitleHeading) {
+        first?.remove();
+      }
     }
-  }, [content, editor, ensureFirstLineHeading, extractTitle, onTitleChange]);
+
+    const normalizedContent =
+      inputDoc.body.innerHTML.trim() ||
+      (hasLinkedTitle ? DEFAULT_NOTE_CONTENT : DEFAULT_STANDALONE_CONTENT);
+
+    const current = editor.getHTML();
+    if (current !== normalizedContent) {
+      editor.commands.setContent(normalizedContent, { emitUpdate: false });
+
+      if (hasLinkedTitle) {
+        ensureFirstLineHeading(editor);
+        onTitleChange?.(extractTitle(editor));
+      }
+    }
+  }, [
+    content,
+    editor,
+    ensureFirstLineHeading,
+    extractTitle,
+    hasLinkedTitle,
+    onTitleChange,
+  ]);
 
   return (
     <div className={cn("simple-editor-wrapper", className)}>

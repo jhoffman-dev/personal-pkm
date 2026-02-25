@@ -21,6 +21,20 @@ export default function Layout() {
   const title = getRouteTitle(pathname);
   const [isCreatingNote, setIsCreatingNote] = useState(false);
 
+  const createNoteWithTimeout = async (timeoutMs: number) => {
+    const createPromise = dispatch(
+      dataThunks.notes.createOne(createEmptyNoteInput()),
+    ).unwrap();
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      window.setTimeout(() => {
+        reject(new Error("Timed out while creating note"));
+      }, timeoutMs);
+    });
+
+    return Promise.race([createPromise, timeoutPromise]);
+  };
+
   const handleCreateNote = async () => {
     if (isCreatingNote) {
       return;
@@ -28,12 +42,15 @@ export default function Layout() {
 
     setIsCreatingNote(true);
     try {
-      const note = await dispatch(
-        dataThunks.notes.createOne(createEmptyNoteInput()),
-      ).unwrap();
+      const note = await createNoteWithTimeout(15000);
       dispatch(notesTabsActions.openNoteTab({ id: note.id, activate: true }));
       dispatch(dataActions.notes.setSelectedId(note.id));
       navigate("/notes");
+    } catch (error) {
+      console.error("Failed to create note:", error);
+      window.alert(
+        "Unable to create note right now. Please check your connection and Firestore rules, then try again.",
+      );
     } finally {
       setIsCreatingNote(false);
     }

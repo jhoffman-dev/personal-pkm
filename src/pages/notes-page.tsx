@@ -718,12 +718,20 @@ export function NotesPage() {
           <div className="flex h-full min-h-0">
             <div className="h-full min-h-0 flex-1 p-4">
               {selectedNote ? (
-                <SimpleEditor
-                  content={draftBody}
-                  onContentChange={setDraftBody}
-                  onTitleChange={setDraftTitle}
-                  className="h-full"
-                />
+                <div className="flex h-full min-h-0 flex-col gap-3">
+                  <Input
+                    value={draftTitle}
+                    onChange={(event) => setDraftTitle(event.target.value)}
+                    placeholder="Note title"
+                    className="text-base font-semibold"
+                  />
+
+                  <SimpleEditor
+                    content={draftBody}
+                    onContentChange={setDraftBody}
+                    className="h-full"
+                  />
+                </div>
               ) : (
                 <p className="text-muted-foreground text-sm">
                   No note selected. Create one with the add button.
