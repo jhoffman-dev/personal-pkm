@@ -16,6 +16,8 @@ import avatarImage from "@/assets/Profile - Avatar - James Hoffman.png";
 import * as React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { getRouteTitle, isRouteActive, navItems } from "@/routes/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   dataActions,
   dataThunks,
@@ -30,8 +32,27 @@ import {
   PARA_TYPE_LABELS,
   normalizeParaType,
 } from "@/lib/project-defaults";
+import {
+  ASSISTANT_STORAGE_EVENT,
+  DEFAULT_CONVERSATION_TITLE,
+  createEmptyConversation,
+  getAssistantStorageKey,
+  loadAssistantState,
+  saveAssistantState,
+  sortAssistantConversations,
+  type StoredAssistantState,
+} from "@/lib/assistant-storage";
 import type { ParaType } from "@/data/entities";
-import { ChevronDown } from "lucide-react";
+import { firebaseAuth } from "@/lib/firebase";
+import {
+  Check,
+  ChevronDown,
+  Pencil,
+  Plus,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 
 const data = {
   user: {
@@ -55,6 +76,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isNotesRoute = isRouteActive(pathname, "/notes");
   const isTasksRoute = isRouteActive(pathname, "/tasks");
   const isProjectsRoute = isRouteActive(pathname, "/projects");
+  const isAssistantRoute = isRouteActive(pathname, "/assistant");
+  const assistantUserId = firebaseAuth.currentUser?.uid ?? "guest";
+  const assistantStorageKey = getAssistantStorageKey(assistantUserId);
+  const assistantSourceId = React.useMemo(() => crypto.randomUUID(), []);
+  const [assistantState, setAssistantState] =
+    React.useState<StoredAssistantState>(() =>
+      loadAssistantState(assistantUserId),
+    );
+  const [renamingConversationId, setRenamingConversationId] = React.useState<
+    string | null
+  >(null);
+  const [renameValue, setRenameValue] = React.useState("");
   const [expandedProjectSections, setExpandedProjectSections] = React.useState<
     Record<ParaType, boolean>
   >({
@@ -103,6 +136,158 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       void dispatch(dataThunks.projects.fetchAll());
     }
   }, [dispatch, isProjectsRoute, projectsState.status]);
+
+  React.useEffect(() => {
+    if (!isAssistantRoute) {
+      return;
+    }
+
+    setAssistantState(loadAssistantState(assistantUserId));
+  }, [assistantUserId, isAssistantRoute]);
+
+  React.useEffect(() => {
+    const onAssistantStorageChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        key?: string;
+        source?: string;
+      }>;
+
+      if (customEvent.detail?.source === assistantSourceId) {
+        return;
+      }
+
+      if (
+        customEvent.detail?.key &&
+        customEvent.detail.key !== assistantStorageKey
+      ) {
+        return;
+      }
+
+      setAssistantState(loadAssistantState(assistantUserId));
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== assistantStorageKey) {
+        return;
+      }
+
+      setAssistantState(loadAssistantState(assistantUserId));
+    };
+
+    window.addEventListener(ASSISTANT_STORAGE_EVENT, onAssistantStorageChanged);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener(
+        ASSISTANT_STORAGE_EVENT,
+        onAssistantStorageChanged,
+      );
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [assistantSourceId, assistantStorageKey, assistantUserId]);
+
+  const updateAssistantState = React.useCallback(
+    (updater: (previous: StoredAssistantState) => StoredAssistantState) => {
+      setAssistantState((previous) => {
+        const next = updater(previous);
+        saveAssistantState(next, assistantUserId, assistantSourceId);
+        return next;
+      });
+    },
+    [assistantSourceId, assistantUserId],
+  );
+
+  const sortedAssistantConversations = React.useMemo(
+    () => sortAssistantConversations(assistantState.conversations),
+    [assistantState.conversations],
+  );
+
+  const createAssistantConversation = () => {
+    const conversation = createEmptyConversation();
+    updateAssistantState((previous) => ({
+      ...previous,
+      activeConversationId: conversation.id,
+      conversations: [conversation, ...previous.conversations],
+    }));
+  };
+
+  const togglePinnedAssistantConversation = (conversationId: string) => {
+    updateAssistantState((previous) => ({
+      ...previous,
+      conversations: previous.conversations.map((conversation) =>
+        conversation.id === conversationId
+          ? { ...conversation, pinned: !conversation.pinned }
+          : conversation,
+      ),
+    }));
+  };
+
+  const startRenamingAssistantConversation = (
+    conversationId: string,
+    currentTitle: string,
+  ) => {
+    setRenamingConversationId(conversationId);
+    setRenameValue(currentTitle);
+  };
+
+  const cancelRenamingAssistantConversation = () => {
+    setRenamingConversationId(null);
+    setRenameValue("");
+  };
+
+  const saveAssistantConversationRename = (conversationId: string) => {
+    const nextTitle = renameValue.trim() || DEFAULT_CONVERSATION_TITLE;
+
+    updateAssistantState((previous) => ({
+      ...previous,
+      conversations: previous.conversations.map((conversation) =>
+        conversation.id === conversationId
+          ? { ...conversation, title: nextTitle }
+          : conversation,
+      ),
+    }));
+
+    cancelRenamingAssistantConversation();
+  };
+
+  const selectAssistantConversation = (conversationId: string) => {
+    updateAssistantState((previous) => ({
+      ...previous,
+      activeConversationId: conversationId,
+    }));
+  };
+
+  const deleteAssistantConversation = (conversationId: string) => {
+    updateAssistantState((previous) => {
+      const remaining = previous.conversations.filter(
+        (conversation) => conversation.id !== conversationId,
+      );
+
+      if (remaining.length === 0) {
+        const fallback = createEmptyConversation();
+        return {
+          ...previous,
+          activeConversationId: fallback.id,
+          conversations: [fallback],
+        };
+      }
+
+      const activeConversationId =
+        previous.activeConversationId === conversationId
+          ? remaining[0].id
+          : previous.activeConversationId;
+
+      return {
+        ...previous,
+        activeConversationId,
+        conversations: remaining,
+      };
+    });
+
+    if (renamingConversationId === conversationId) {
+      cancelRenamingAssistantConversation();
+    }
+  };
 
   const projectsWithTaskCount = React.useMemo(
     () =>
@@ -382,6 +567,161 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             )}
                           </div>
                         ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : isAssistantRoute ? (
+            <SidebarGroup>
+              <SidebarGroupLabel className="flex items-center justify-between pr-2">
+                <span>Conversations</span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={createAssistantConversation}
+                  aria-label="Create conversation"
+                >
+                  <Plus />
+                </Button>
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <div className="space-y-1 px-2">
+                  {sortedAssistantConversations.map((conversation) => {
+                    const lastMessage =
+                      conversation.messages[conversation.messages.length - 1];
+                    const isActive =
+                      assistantState.activeConversationId === conversation.id;
+
+                    return (
+                      <div
+                        key={conversation.id}
+                        className={`group rounded-md border p-2 ${
+                          isActive
+                            ? "bg-sidebar-accent border-sidebar-border"
+                            : "bg-sidebar"
+                        }`}
+                      >
+                        {renamingConversationId === conversation.id ? (
+                          <div className="space-y-1">
+                            <Input
+                              value={renameValue}
+                              onChange={(event) =>
+                                setRenameValue(event.target.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  saveAssistantConversationRename(
+                                    conversation.id,
+                                  );
+                                }
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelRenamingAssistantConversation();
+                                }
+                              }}
+                              className="h-7"
+                              autoFocus
+                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                onClick={() =>
+                                  saveAssistantConversationRename(
+                                    conversation.id,
+                                  )
+                                }
+                                aria-label="Save conversation name"
+                              >
+                                <Check />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                onClick={cancelRenamingAssistantConversation}
+                                aria-label="Cancel rename"
+                              >
+                                <X />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="w-full min-w-0 text-left"
+                              onClick={() =>
+                                selectAssistantConversation(conversation.id)
+                              }
+                            >
+                              <p className="truncate text-sm font-medium">
+                                {conversation.title}
+                              </p>
+                              <p className="text-sidebar-foreground/70 truncate text-xs">
+                                {lastMessage?.content ?? "No messages yet"}
+                              </p>
+                            </button>
+
+                            <div className="mt-1 flex items-center justify-end gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="opacity-80 group-hover:opacity-100"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  startRenamingAssistantConversation(
+                                    conversation.id,
+                                    conversation.title,
+                                  );
+                                }}
+                                aria-label="Rename conversation"
+                              >
+                                <Pencil />
+                              </Button>
+
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className={
+                                  conversation.pinned ? "text-primary" : ""
+                                }
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  togglePinnedAssistantConversation(
+                                    conversation.id,
+                                  );
+                                }}
+                                aria-label={
+                                  conversation.pinned
+                                    ? "Unpin conversation"
+                                    : "Pin conversation"
+                                }
+                              >
+                                <Star
+                                  className={
+                                    conversation.pinned ? "fill-current" : ""
+                                  }
+                                />
+                              </Button>
+
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="text-destructive opacity-80 group-hover:opacity-100"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteAssistantConversation(conversation.id);
+                                }}
+                                aria-label="Delete conversation"
+                              >
+                                <Trash2 />
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
