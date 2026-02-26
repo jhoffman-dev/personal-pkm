@@ -15,6 +15,7 @@ import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import { normalizeParaType } from "@/lib/project-defaults";
 import { createEmptyProjectInput } from "@/lib/project-defaults";
 import { createEmptyTaskInput } from "@/lib/task-defaults";
+import { enqueueNoteForLinking } from "@/lib/note-linking-queue";
 import {
   dataActions,
   dataThunks,
@@ -495,6 +496,7 @@ export function NotesPage() {
           },
         }),
       );
+      enqueueNoteForLinking(selectedNote.id);
     }, 500);
 
     return () => window.clearTimeout(timeoutId);

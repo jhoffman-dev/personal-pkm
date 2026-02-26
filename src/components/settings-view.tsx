@@ -17,12 +17,15 @@ import { useTheme } from "@/components/theme-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   type AppSettings,
-  DEFAULT_APP_SETTINGS,
   loadAppSettings,
   saveAppSettings,
 } from "@/lib/app-settings";
+import {
+  getQueuedNoteLinkCount,
+  processNoteLinkQueue,
+} from "@/lib/note-linking-queue";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const SETTINGS_SECTIONS = [
   "General",
@@ -40,6 +43,7 @@ const DEFAULT_PAGE_OPTIONS = [
   { label: "Notes", value: "/notes" },
   { label: "Tasks", value: "/tasks" },
   { label: "Meetings", value: "/meetings" },
+  { label: "Calendar", value: "/calendar" },
   { label: "Projects", value: "/projects" },
   { label: "Graph", value: "/graph" },
 ];
@@ -110,15 +114,29 @@ function SettingsBody({
   onSectionChange: (section: SettingsSection) => void;
 }) {
   const { theme, setTheme } = useTheme();
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(() =>
+    loadAppSettings(),
+  );
+  const [queuedLinkCount, setQueuedLinkCount] = useState(0);
+  const [isProcessingLinks, setIsProcessingLinks] = useState(false);
+  const [linkProcessingStatus, setLinkProcessingStatus] = useState<
+    string | null
+  >(null);
+
+  const updateSettings = useCallback(
+    (updater: (current: AppSettings) => AppSettings) => {
+      setSettings((current) => {
+        const next = updater(current);
+        saveAppSettings(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
-    setSettings(loadAppSettings());
+    setQueuedLinkCount(getQueuedNoteLinkCount());
   }, []);
-
-  useEffect(() => {
-    saveAppSettings(settings);
-  }, [settings]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -174,7 +192,7 @@ function SettingsBody({
                             : "outline"
                         }
                         onClick={() =>
-                          setSettings((current) => ({
+                          updateSettings((current) => ({
                             ...current,
                             defaultPage: option.value,
                           }))
@@ -197,7 +215,7 @@ function SettingsBody({
                     type="checkbox"
                     checked={settings.confirmBeforeDelete}
                     onChange={(event) =>
-                      setSettings((current) => ({
+                      updateSettings((current) => ({
                         ...current,
                         confirmBeforeDelete: event.target.checked,
                       }))
@@ -212,7 +230,7 @@ function SettingsBody({
                     type="checkbox"
                     checked={settings.compactMode}
                     onChange={(event) =>
-                      setSettings((current) => ({
+                      updateSettings((current) => ({
                         ...current,
                         compactMode: event.target.checked,
                       }))
@@ -263,7 +281,7 @@ function SettingsBody({
                     step={5}
                     value={settings.fontScale}
                     onChange={(event) =>
-                      setSettings((current) => ({
+                      updateSettings((current) => ({
                         ...current,
                         fontScale: Number(event.target.value),
                       }))
@@ -277,7 +295,120 @@ function SettingsBody({
         ) : null}
 
         {activeSection === "Connections" ? (
-          <div className="mt-5">
+          <div className="mt-5 space-y-4">
+            <Card>
+              <CardContent className="space-y-3 p-4">
+                <h3 className="text-sm font-semibold">Google Calendar</h3>
+                <p className="text-muted-foreground text-xs">
+                  Configure Google Calendar sync credentials. Values are stored
+                  only on this device.
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Use an OAuth client of type <strong>Web application</strong>
+                  (not Desktop). Add your app origin to Authorized JavaScript
+                  origins (for local dev: http://localhost:5173).
+                </p>
+
+                <label className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.googleCalendarEnabled}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        googleCalendarEnabled: event.target.checked,
+                      }))
+                    }
+                    className="size-4"
+                  />
+                  Enable Google Calendar connection
+                </label>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">
+                    Google OAuth Client ID
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.googleCalendarClientId}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        googleCalendarClientId: event.target.value,
+                      }))
+                    }
+                    placeholder="Enter Google OAuth client ID"
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Google API Key</label>
+                  <input
+                    type="password"
+                    value={settings.googleCalendarApiKey}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        googleCalendarApiKey: event.target.value,
+                      }))
+                    }
+                    placeholder="Enter Google API key"
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Optional for now. OAuth access token is used for calendar
+                    import requests.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Calendar ID</label>
+                  <input
+                    type="text"
+                    value={settings.googleCalendarCalendarId}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        googleCalendarCalendarId: event.target.value,
+                      }))
+                    }
+                    placeholder="primary"
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Use <strong>primary</strong> or the calendar's ID from
+                    Google Calendar settings (not the calendar display name).
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings((current) => ({
+                        ...current,
+                        googleCalendarEnabled: false,
+                        googleCalendarClientId: "",
+                        googleCalendarApiKey: "",
+                        googleCalendarCalendarId: "primary",
+                      }))
+                    }
+                  >
+                    Clear calendar config
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardContent className="space-y-3 p-4">
                 <h3 className="text-sm font-semibold">AI Providers</h3>
@@ -293,7 +424,7 @@ function SettingsBody({
                     type="password"
                     value={settings.googleAiStudioApiKey}
                     onChange={(event) =>
-                      setSettings((current) => ({
+                      updateSettings((current) => ({
                         ...current,
                         googleAiStudioApiKey: event.target.value,
                       }))
@@ -311,7 +442,7 @@ function SettingsBody({
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      setSettings((current) => ({
+                      updateSettings((current) => ({
                         ...current,
                         googleAiStudioApiKey: "",
                       }))
@@ -320,6 +451,93 @@ function SettingsBody({
                     Clear key
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-3 p-4">
+                <h3 className="text-sm font-semibold">Auto Note Linking</h3>
+                <p className="text-muted-foreground text-xs">
+                  Queue note updates and process semantic linking on a schedule.
+                </p>
+
+                <label className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.noteLinkScheduleEnabled}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        noteLinkScheduleEnabled: event.target.checked,
+                      }))
+                    }
+                    className="size-4"
+                  />
+                  Enable scheduled processing
+                </label>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">
+                    Daily processing time
+                  </label>
+                  <input
+                    type="time"
+                    value={settings.noteLinkScheduleTime}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        noteLinkScheduleTime: event.target.value,
+                      }))
+                    }
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-3 py-1 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+                  />
+                </div>
+
+                <div className="text-muted-foreground text-xs">
+                  {queuedLinkCount} note{queuedLinkCount === 1 ? "" : "s"} in
+                  queue.
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isProcessingLinks}
+                    onClick={() => {
+                      setIsProcessingLinks(true);
+                      setLinkProcessingStatus(null);
+
+                      void processNoteLinkQueue()
+                        .then((result) => {
+                          setQueuedLinkCount(result.remaining);
+                          setLinkProcessingStatus(
+                            `Processed ${result.processed} note${
+                              result.processed === 1 ? "" : "s"
+                            } · Updated ${result.updated} · Failed ${result.failed}`,
+                          );
+                        })
+                        .catch((error) => {
+                          setLinkProcessingStatus(
+                            error instanceof Error
+                              ? error.message
+                              : "Failed to process link queue",
+                          );
+                        })
+                        .finally(() => {
+                          setIsProcessingLinks(false);
+                        });
+                    }}
+                  >
+                    {isProcessingLinks ? "Processing..." : "Process queue now"}
+                  </Button>
+                </div>
+
+                {linkProcessingStatus ? (
+                  <p className="text-muted-foreground text-xs">
+                    {linkProcessingStatus}
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
           </div>

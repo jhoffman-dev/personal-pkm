@@ -1,6 +1,7 @@
 import {
   Building2,
   Bot,
+  CalendarDays,
   ChartGantt,
   LayoutDashboard,
   ListTodo,
@@ -36,6 +37,11 @@ export const navItems: NavItem[] = [
     title: "Meetings",
     to: "/meetings",
     icon: Presentation,
+  },
+  {
+    title: "Calendar",
+    to: "/calendar",
+    icon: CalendarDays,
   },
   {
     title: "Projects",
