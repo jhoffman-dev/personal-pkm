@@ -46,6 +46,7 @@ import {
 } from "@/lib/assistant-storage";
 import type { ParaType } from "@/data/entities";
 import { firebaseAuth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   Check,
   ChevronDown,
@@ -85,7 +86,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isCompaniesRoute = isRouteActive(pathname, "/companies");
   const isPeopleRoute = isRouteActive(pathname, "/people");
   const isAssistantRoute = isRouteActive(pathname, "/assistant");
-  const assistantUserId = firebaseAuth.currentUser?.uid ?? "guest";
+  const [assistantUserId, setAssistantUserId] = React.useState<string>(
+    () => firebaseAuth.currentUser?.uid ?? "guest",
+  );
   const assistantSourceId = React.useMemo(() => crypto.randomUUID(), []);
   const [assistantState, setAssistantState] =
     React.useState<StoredAssistantState>(() =>
@@ -116,6 +119,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         }),
     [notesState.entities, notesState.ids],
   );
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
+      setAssistantUserId(nextUser?.uid ?? "guest");
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (isNotesRoute && notesState.status === "idle") {

@@ -12,6 +12,7 @@ import type {
 import { sendChatStream, type ChatMessage } from "@/lib/ai-client";
 import { loadAppSettings } from "@/lib/app-settings";
 import { firebaseAuth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   buildRagContextBlock,
   retrieveRelevantDocuments,
@@ -190,9 +191,11 @@ export function AssistantPage() {
   const meetingsState = useAppSelector((state) => state.meetings);
   const companiesState = useAppSelector((state) => state.companies);
   const peopleState = useAppSelector((state) => state.people);
-  const userId = firebaseAuth.currentUser?.uid ?? "guest";
+  const [assistantUserId, setAssistantUserId] = useState<string>(
+    () => firebaseAuth.currentUser?.uid ?? "guest",
+  );
   const [assistantState, setAssistantState] = useState<StoredAssistantState>(
-    () => loadAssistantState(userId),
+    () => loadAssistantState(assistantUserId),
   );
   const [prompt, setPrompt] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -209,6 +212,16 @@ export function AssistantPage() {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const geminiApiKey = loadAppSettings().googleAiStudioApiKey.trim();
   const isGeminiKeyConfigured = geminiApiKey.length > 0;
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
+      setAssistantUserId(nextUser?.uid ?? "guest");
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const isNearBottom = (container: HTMLDivElement) => {
     return (
@@ -237,17 +250,17 @@ export function AssistantPage() {
   };
 
   useEffect(() => {
-    setAssistantState(loadAssistantState(userId));
+    setAssistantState(loadAssistantState(assistantUserId));
     setIsHydrated(true);
 
-    void hydrateAssistantStateFromFirestore(userId)
+    void hydrateAssistantStateFromFirestore(assistantUserId)
       .then((nextState) => {
         setAssistantState(nextState);
       })
       .catch(() => {
         // Keep in-memory state if backend hydration fails.
       });
-  }, [userId]);
+  }, [assistantUserId]);
 
   useEffect(() => {
     if (projectsState.status === "idle") {
@@ -283,8 +296,8 @@ export function AssistantPage() {
       return;
     }
 
-    saveAssistantState(assistantState, userId, ASSISTANT_PAGE_SOURCE);
-  }, [assistantState, isHydrated, userId]);
+    saveAssistantState(assistantState, assistantUserId, ASSISTANT_PAGE_SOURCE);
+  }, [assistantState, assistantUserId, isHydrated]);
 
   useEffect(() => {
     const onAssistantStorageChanged = (event: Event) => {
@@ -296,7 +309,7 @@ export function AssistantPage() {
         return;
       }
 
-      setAssistantState(loadAssistantState(userId));
+      setAssistantState(loadAssistantState(assistantUserId));
     };
 
     window.addEventListener(ASSISTANT_STORAGE_EVENT, onAssistantStorageChanged);
@@ -307,7 +320,7 @@ export function AssistantPage() {
         onAssistantStorageChanged,
       );
     };
-  }, [userId]);
+  }, [assistantUserId]);
 
   const activeConversation = useMemo(
     () =>
@@ -577,7 +590,7 @@ export function AssistantPage() {
               : undefined,
           systemPrompt: resolvedSystemPrompt || undefined,
           authToken,
-          userId,
+          userId: assistantUserId,
           conversationId,
           conversationTitle,
           messages: [...chatHistory, { role: "user", content: value }],
