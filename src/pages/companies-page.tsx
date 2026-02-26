@@ -116,6 +116,7 @@ export function CompaniesPage() {
 
   useEffect(() => {
     if (!selectedCompany) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftName("");
       setDraftEmail("");
       setDraftPhone("");
@@ -141,7 +142,7 @@ export function CompaniesPage() {
     setDraftNoteIds(selectedCompany.noteIds ?? []);
     setDraftTaskIds(selectedCompany.taskIds ?? []);
     setDraftMeetingIds(selectedCompany.meetingIds ?? []);
-  }, [selectedCompany?.id]);
+  }, [selectedCompany]);
 
   useEffect(() => {
     if (!selectedCompany) {

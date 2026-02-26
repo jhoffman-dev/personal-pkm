@@ -9,18 +9,20 @@ import type {
   Project,
   Task,
 } from "@/data/entities";
-import { sendChatStream, type ChatMessage } from "@/lib/ai-client";
+import type { ChatMessage } from "@/lib/ai-client";
 import { loadAppSettings } from "@/lib/app-settings";
 import { firebaseAuth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import type { RagDocument } from "@/lib/rag-context";
 import {
-  buildRagContextBlock,
-  retrieveRelevantDocuments,
-  type RagDocument,
-} from "@/lib/rag-context";
+  buildAssistantRagDocuments,
+  PROVIDER_DEFAULT_MODELS,
+  remapCitationIndexes,
+  resolveCitedSources,
+  streamAssistantReply,
+} from "@/features/assistant";
 import {
   ASSISTANT_STORAGE_EVENT,
-  type AssistantConversation,
   type AssistantProvider,
   createEmptyConversation,
   DEFAULT_CONVERSATION_TITLE,
@@ -34,154 +36,11 @@ import {
 import { dataThunks, useAppDispatch, useAppSelector } from "@/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const ASSISTANT_PAGE_SOURCE = "assistant-page";
 
-const PROVIDER_DEFAULT_MODELS: Record<AssistantProvider, string> = {
-  ollama: "qwen3:8b",
-  gemini: "gemini-2.5-flash",
-  vertex: "gemini-2.5-flash",
-};
-
 const SCROLL_BOTTOM_THRESHOLD_PX = 80;
-
-function toPlainText(value: string): string {
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function truncate(value: string, maxLength = 600): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength)}…`;
-}
-
-function personName(person: Person): string {
-  return `${person.firstName} ${person.lastName}`.replace(/\s+/g, " ").trim();
-}
-
-function conversationExcerpt(conversation: AssistantConversation): string {
-  return conversation.messages
-    .slice(-8)
-    .map((message) => `${message.role}: ${toPlainText(message.content)}`)
-    .join("\n")
-    .trim();
-}
-
-function parseThinkingAndReply(content: string): {
-  thinking: string;
-  reply: string;
-} {
-  const openTag = "<think>";
-  const closeTag = "</think>";
-  const openIndex = content.indexOf(openTag);
-
-  if (openIndex === -1) {
-    return {
-      thinking: "",
-      reply: content,
-    };
-  }
-
-  const thinkingStart = openIndex + openTag.length;
-  const closeIndex = content.indexOf(closeTag, thinkingStart);
-
-  if (closeIndex === -1) {
-    return {
-      thinking: content.slice(thinkingStart).trim(),
-      reply: "",
-    };
-  }
-
-  return {
-    thinking: content.slice(thinkingStart, closeIndex).trim(),
-    reply: content.slice(closeIndex + closeTag.length).trimStart(),
-  };
-}
-
-function extractCitedSourceIndexes(content: string): number[] {
-  const orderedIndexes: number[] = [];
-  const seenIndexes = new Set<number>();
-  const citationRegex = /\[(\d+)\]/g;
-
-  let match = citationRegex.exec(content);
-  while (match) {
-    const value = Number(match[1]);
-    if (Number.isInteger(value) && value > 0 && !seenIndexes.has(value)) {
-      seenIndexes.add(value);
-      orderedIndexes.push(value);
-    }
-
-    match = citationRegex.exec(content);
-  }
-
-  return orderedIndexes;
-}
-
-function resolveCitedSources(
-  content: string,
-  sources: RagDocument[],
-): {
-  citationIndex: number;
-  originalCitationIndex: number;
-  source: RagDocument;
-}[] {
-  const citedIndexes = extractCitedSourceIndexes(content);
-  const resolved = citedIndexes
-    .map((originalCitationIndex, index) => {
-      const source = sources[originalCitationIndex - 1];
-      if (!source) {
-        return null;
-      }
-
-      return {
-        citationIndex: index + 1,
-        originalCitationIndex,
-        source,
-      };
-    })
-    .filter(Boolean) as {
-    citationIndex: number;
-    originalCitationIndex: number;
-    source: RagDocument;
-  }[];
-
-  const seenSourceIds = new Set<string>();
-  return resolved.filter((entry) => {
-    if (seenSourceIds.has(entry.source.id)) {
-      return false;
-    }
-
-    seenSourceIds.add(entry.source.id);
-    return true;
-  });
-}
-
-function remapCitationIndexes(
-  content: string,
-  citedSources: { citationIndex: number; originalCitationIndex: number }[],
-): string {
-  if (citedSources.length === 0) {
-    return content;
-  }
-
-  const indexMap = new Map<number, number>();
-  citedSources.forEach((entry) => {
-    indexMap.set(entry.originalCitationIndex, entry.citationIndex);
-  });
-
-  return content.replace(/\[(\d+)\]/g, (_value, indexText: string) => {
-    const original = Number(indexText);
-    const remapped = indexMap.get(original);
-
-    return remapped ? `[${remapped}]` : `[${indexText}]`;
-  });
-}
 
 export function AssistantPage() {
   const dispatch = useAppDispatch();
@@ -230,24 +89,24 @@ export function AssistantPage() {
     );
   };
 
-  const scrollMessagesToBottom = (
-    behavior: ScrollBehavior = "auto",
-    force = false,
-  ) => {
-    const container = messagesContainerRef.current;
-    if (!container) {
-      return;
-    }
+  const scrollMessagesToBottom = useCallback(
+    (behavior: ScrollBehavior = "auto", force = false) => {
+      const container = messagesContainerRef.current;
+      if (!container) {
+        return;
+      }
 
-    if (!force && !autoScrollEnabled) {
-      return;
-    }
+      if (!force && !autoScrollEnabled) {
+        return;
+      }
 
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior,
-    });
-  };
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior,
+      });
+    },
+    [autoScrollEnabled],
+  );
 
   useEffect(() => {
     setAssistantState(loadAssistantState(assistantUserId));
@@ -331,12 +190,19 @@ export function AssistantPage() {
     [assistantState.activeConversationId, assistantState.conversations],
   );
 
-  const messages = activeConversation?.messages ?? [];
+  const messages = useMemo(
+    () => activeConversation?.messages ?? [],
+    [activeConversation?.messages],
+  );
 
   useEffect(() => {
     setAutoScrollEnabled(true);
     scrollMessagesToBottom("auto", true);
-  }, [assistantState.activeConversationId, messages.length]);
+  }, [
+    assistantState.activeConversationId,
+    messages.length,
+    scrollMessagesToBottom,
+  ]);
 
   useEffect(() => {
     if (!streamingMessageId) {
@@ -344,7 +210,7 @@ export function AssistantPage() {
     }
 
     scrollMessagesToBottom("auto");
-  }, [streamingMessageId, streamingThinking]);
+  }, [scrollMessagesToBottom, streamingMessageId, streamingThinking]);
 
   const chatHistory = useMemo<ChatMessage[]>(
     () =>
@@ -374,122 +240,17 @@ export function AssistantPage() {
     const people: Person[] = peopleState.ids
       .map((id) => peopleState.entities[id])
       .filter(Boolean);
-
-    const documents = [
-      ...projects.map((project) => ({
-        id: `project:${project.id}`,
-        sourceType: "Project",
-        title: project.name || "Untitled project",
-        updatedAt: project.updatedAt,
-        content: truncate(
-          [
-            project.description,
-            (project.tags ?? []).join(" "),
-            project.paraType,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        ),
-      })),
-      ...notes.map((note) => ({
-        id: `note:${note.id}`,
-        sourceType: "Note",
-        title: note.title || "Untitled note",
-        updatedAt: note.updatedAt,
-        content: truncate(
-          [toPlainText(note.body), (note.tags ?? []).join(" ")]
-            .filter(Boolean)
-            .join("\n"),
-          900,
-        ),
-      })),
-      ...tasks.map((task) => ({
-        id: `task:${task.id}`,
-        sourceType: "Task",
-        title: task.title || "Untitled task",
-        updatedAt: task.updatedAt,
-        content: truncate(
-          [
-            task.description,
-            task.notes,
-            `status:${task.status}`,
-            `level:${task.level}`,
-            (task.tags ?? []).join(" "),
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        ),
-      })),
-      ...meetings.map((meeting) => ({
-        id: `meeting:${meeting.id}`,
-        sourceType: "Meeting",
-        title: meeting.title || "Untitled meeting",
-        updatedAt: meeting.updatedAt,
-        content: truncate(
-          [
-            meeting.location,
-            `scheduled:${meeting.scheduledFor}`,
-            (meeting.tags ?? []).join(" "),
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        ),
-      })),
-      ...companies.map((company) => ({
-        id: `company:${company.id}`,
-        sourceType: "Company",
-        title: company.name || "Untitled company",
-        updatedAt: company.updatedAt,
-        content: truncate(
-          [
-            company.email,
-            company.phone,
-            company.website,
-            company.address,
-            (company.tags ?? []).join(" "),
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        ),
-      })),
-      ...people.map((person) => ({
-        id: `person:${person.id}`,
-        sourceType: "Person",
-        title: personName(person) || "Unnamed person",
-        updatedAt: person.updatedAt,
-        content: truncate(
-          [
-            person.email,
-            person.phone,
-            person.address,
-            (person.tags ?? []).join(" "),
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        ),
-      })),
-      ...assistantState.conversations
-        .filter(
-          (conversation) =>
-            conversation.id !== assistantState.activeConversationId,
-        )
-        .map((conversation) => ({
-          id: `chat:${conversation.id}`,
-          sourceType: "Assistant Chat",
-          title: conversation.title || DEFAULT_CONVERSATION_TITLE,
-          updatedAt: conversation.updatedAt,
-          content: truncate(conversationExcerpt(conversation), 1200),
-        })),
-    ];
-
-    return documents.filter((document) => {
-      const title = document.title.trim();
-      const content = document.content.trim();
-      return title.length > 0 || content.length > 0;
+    return buildAssistantRagDocuments({
+      projects,
+      notes,
+      tasks,
+      meetings,
+      companies,
+      people,
+      assistantState,
     });
   }, [
-    assistantState.activeConversationId,
-    assistantState.conversations,
+    assistantState,
     companiesState.entities,
     companiesState.ids,
     meetingsState.entities,
@@ -564,82 +325,49 @@ export function AssistantPage() {
         ?.getIdToken()
         .catch(() => undefined);
 
-      let rawStreamContent = "";
-      let streamReportedDone = false;
-      const relevantDocuments = retrieveRelevantDocuments({
-        query: value,
-        documents: ragDocuments,
+      const { finalReply } = await streamAssistantReply({
+        provider: assistantState.provider,
+        model: assistantState.model,
+        systemPrompt: assistantState.systemPrompt,
+        conversationId,
+        conversationTitle,
+        userId: assistantUserId,
+        prompt: value,
+        chatHistory,
+        ragDocuments,
+        authToken,
+        geminiApiKey,
+        onRelevantDocuments: (relevantDocuments) => {
+          setRagSourcesByMessageId((previous) => ({
+            ...previous,
+            [assistantMessageId]: relevantDocuments,
+          }));
+        },
+        onThinking: (thinking) => {
+          setStreamingThinking(thinking || "Thinking...");
+        },
+        onReplyDelta: (reply) => {
+          setAssistantState((previous) => ({
+            ...previous,
+            conversations: previous.conversations.map((conversation) =>
+              conversation.id === conversationId
+                ? {
+                    ...conversation,
+                    updatedAt: new Date().toISOString(),
+                    messages: conversation.messages.map((message) =>
+                      message.id === assistantMessageId
+                        ? {
+                            ...message,
+                            content: reply,
+                          }
+                        : message,
+                    ),
+                  }
+                : conversation,
+            ),
+          }));
+        },
       });
-      setRagSourcesByMessageId((previous) => ({
-        ...previous,
-        [assistantMessageId]: relevantDocuments,
-      }));
-      const ragContextBlock = buildRagContextBlock(relevantDocuments);
-      const baseSystemPrompt = assistantState.systemPrompt.trim();
-      const resolvedSystemPrompt = ragContextBlock
-        ? `${baseSystemPrompt}\n\nUse the following retrieved workspace context as reference. Prioritize it when relevant, and if context is incomplete, state uncertainty briefly. When you use retrieved context, cite sources inline using bracket indices like [1], [2] that map to the list below. Do not invent citations.\n\n${ragContextBlock}`
-        : baseSystemPrompt;
-
-      await sendChatStream(
-        {
-          provider: assistantState.provider,
-          model: assistantState.model.trim() || undefined,
-          googleAiStudioApiKey:
-            assistantState.provider === "gemini"
-              ? geminiApiKey || undefined
-              : undefined,
-          systemPrompt: resolvedSystemPrompt || undefined,
-          authToken,
-          userId: assistantUserId,
-          conversationId,
-          conversationTitle,
-          messages: [...chatHistory, { role: "user", content: value }],
-        },
-        (chunk) => {
-          if (chunk.error) {
-            throw new Error(chunk.error);
-          }
-
-          if (typeof chunk.delta === "string" && chunk.delta.length > 0) {
-            rawStreamContent += chunk.delta;
-            const parsed = parseThinkingAndReply(rawStreamContent);
-            setStreamingThinking(parsed.thinking || "Thinking...");
-
-            setAssistantState((previous) => ({
-              ...previous,
-              conversations: previous.conversations.map((conversation) =>
-                conversation.id === conversationId
-                  ? {
-                      ...conversation,
-                      updatedAt: new Date().toISOString(),
-                      messages: conversation.messages.map((message) =>
-                        message.id === assistantMessageId
-                          ? {
-                              ...message,
-                              content: parsed.reply,
-                            }
-                          : message,
-                      ),
-                    }
-                  : conversation,
-              ),
-            }));
-          }
-
-          if (chunk.done) {
-            streamReportedDone = true;
-          }
-        },
-      );
-
-      if (!streamReportedDone && rawStreamContent.length === 0) {
-        throw new Error(
-          "No streamed response was received from the AI backend",
-        );
-      }
-
-      const parsed = parseThinkingAndReply(rawStreamContent);
-      const finalReply = parsed.reply || rawStreamContent;
 
       setAssistantState((previous) => ({
         ...previous,

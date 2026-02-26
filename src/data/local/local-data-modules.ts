@@ -32,73 +32,22 @@ import type {
   RelationField,
 } from "@/data/types";
 import { createEntityId, nowIsoDate } from "@/data/types";
+import {
+  relationFieldsFromDefaults,
+  uniqueEntityIds,
+} from "@/data/shared/relation-domain";
+import {
+  applyBidirectionalRelationMutations,
+  applyDetachRelationMutations,
+  applyInboundCleanupSpecs,
+} from "@/data/shared/relation-mutation-runner";
+import { LocalRelationMutator } from "@/data/local/local-relation-mutator";
 import type { CollectionEntityMap } from "@/data/local/local-nosql-store";
 import { LocalNoSqlStore } from "@/data/local/local-nosql-store";
 
 type RelationArrays<TEntity> = {
   [K in RelationField<TEntity>]?: EntityId[];
 };
-
-type RelationConfig = {
-  targetCollection: EntityCollectionName;
-  targetField: string;
-};
-
-const RELATION_CONFIG: Record<
-  EntityCollectionName,
-  Partial<Record<string, RelationConfig>>
-> = {
-  projects: {
-    personIds: { targetCollection: "people", targetField: "projectIds" },
-    companyIds: { targetCollection: "companies", targetField: "projectIds" },
-    noteIds: { targetCollection: "notes", targetField: "projectIds" },
-    taskIds: { targetCollection: "tasks", targetField: "projectIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "projectIds" },
-  },
-  notes: {
-    relatedNoteIds: {
-      targetCollection: "notes",
-      targetField: "relatedNoteIds",
-    },
-    personIds: { targetCollection: "people", targetField: "noteIds" },
-    companyIds: { targetCollection: "companies", targetField: "noteIds" },
-    projectIds: { targetCollection: "projects", targetField: "noteIds" },
-    taskIds: { targetCollection: "tasks", targetField: "noteIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "noteIds" },
-  },
-  tasks: {
-    personIds: { targetCollection: "people", targetField: "taskIds" },
-    companyIds: { targetCollection: "companies", targetField: "taskIds" },
-    projectIds: { targetCollection: "projects", targetField: "taskIds" },
-    noteIds: { targetCollection: "notes", targetField: "taskIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "taskIds" },
-  },
-  meetings: {
-    personIds: { targetCollection: "people", targetField: "meetingIds" },
-    companyIds: { targetCollection: "companies", targetField: "meetingIds" },
-    projectIds: { targetCollection: "projects", targetField: "meetingIds" },
-    noteIds: { targetCollection: "notes", targetField: "meetingIds" },
-    taskIds: { targetCollection: "tasks", targetField: "meetingIds" },
-  },
-  companies: {
-    personIds: { targetCollection: "people", targetField: "companyIds" },
-    projectIds: { targetCollection: "projects", targetField: "companyIds" },
-    noteIds: { targetCollection: "notes", targetField: "companyIds" },
-    taskIds: { targetCollection: "tasks", targetField: "companyIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "companyIds" },
-  },
-  people: {
-    companyIds: { targetCollection: "companies", targetField: "personIds" },
-    projectIds: { targetCollection: "projects", targetField: "personIds" },
-    noteIds: { targetCollection: "notes", targetField: "personIds" },
-    taskIds: { targetCollection: "tasks", targetField: "personIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "personIds" },
-  },
-};
-
-function uniqueEntityIds(values: EntityId[]): EntityId[] {
-  return Array.from(new Set(values.filter(Boolean)));
-}
 
 class LocalRelationalDataModule<
   TCollection extends EntityCollectionName,
@@ -108,6 +57,7 @@ class LocalRelationalDataModule<
   protected readonly store: LocalNoSqlStore;
   protected readonly collection: TCollection;
   protected readonly idPrefix: string;
+  protected readonly relationMutator: LocalRelationMutator;
   protected readonly relationDefaults: RelationArrays<
     CollectionEntityMap[TCollection]
   >;
@@ -121,6 +71,7 @@ class LocalRelationalDataModule<
     this.store = store;
     this.collection = collection;
     this.idPrefix = idPrefix;
+    this.relationMutator = new LocalRelationMutator(store);
     this.relationDefaults = relationDefaults;
   }
 
@@ -158,7 +109,7 @@ class LocalRelationalDataModule<
 
     const normalized = this.normalizeRelations(entity);
     const created = this.store.set(this.collection, normalized);
-    this.syncBidirectionalRelations(created, null);
+    await this.syncBidirectionalRelations(created, null);
     return created;
   }
 
@@ -179,7 +130,7 @@ class LocalRelationalDataModule<
 
     const normalized = this.normalizeRelations(updated);
     const saved = this.store.set(this.collection, normalized);
-    this.syncBidirectionalRelations(saved, existing);
+    await this.syncBidirectionalRelations(saved, existing);
     return saved;
   }
 
@@ -194,8 +145,8 @@ class LocalRelationalDataModule<
       return false;
     }
 
-    this.detachRelationsForDeletedEntity(existing);
-    this.removeInboundRelationsToDeletedEntity(id);
+    await this.detachRelationsForDeletedEntity(existing);
+    await this.removeInboundRelationsToDeletedEntity(id);
     return true;
   }
 
@@ -214,7 +165,7 @@ class LocalRelationalDataModule<
   }
 
   private getRelationFields(): string[] {
-    return Object.keys(this.relationDefaults);
+    return relationFieldsFromDefaults(this.relationDefaults);
   }
 
   private normalizeRelations(
@@ -234,168 +185,61 @@ class LocalRelationalDataModule<
     return normalized as CollectionEntityMap[TCollection];
   }
 
-  private readRelationIds(entity: unknown, field: string): EntityId[] {
-    if (!entity || typeof entity !== "object") {
-      return [];
-    }
-
-    const record = entity as Record<string, unknown>;
-    const value = record[field];
-
-    return Array.isArray(value) ? (value as EntityId[]) : [];
-  }
-
   private syncBidirectionalRelations(
     nextEntity: CollectionEntityMap[TCollection],
     previousEntity: CollectionEntityMap[TCollection] | null,
-  ): void {
-    const collectionConfig = RELATION_CONFIG[this.collection];
-    const relationFields = this.getRelationFields();
-
-    relationFields.forEach((field) => {
-      const config = collectionConfig[field];
-      if (!config) {
-        return;
-      }
-
-      const previousIds = uniqueEntityIds(
-        this.readRelationIds(previousEntity, field),
-      );
-      const nextIds = uniqueEntityIds(this.readRelationIds(nextEntity, field));
-
-      const previousSet = new Set(previousIds);
-      const nextSet = new Set(nextIds);
-
-      const removedIds = previousIds.filter((id) => !nextSet.has(id));
-      const addedIds = nextIds.filter((id) => !previousSet.has(id));
-
-      addedIds.forEach((relatedId) => {
-        this.linkReverse(config, relatedId, nextEntity.id);
-      });
-
-      removedIds.forEach((relatedId) => {
-        this.unlinkReverse(config, relatedId, nextEntity.id);
-      });
+  ): Promise<void> {
+    return applyBidirectionalRelationMutations({
+      collection: this.collection,
+      relationFields: this.getRelationFields(),
+      nextEntity,
+      previousEntity,
+      onAdd: (mutation) => {
+        return this.relationMutator.addReverseLink(
+          mutation.config,
+          mutation.relatedId,
+          mutation.sourceId,
+        );
+      },
+      onRemove: (mutation) => {
+        return this.relationMutator.removeReverseLink(
+          mutation.config,
+          mutation.relatedId,
+          mutation.sourceId,
+        );
+      },
     });
-  }
-
-  private linkReverse(
-    config: RelationConfig,
-    relatedId: EntityId,
-    sourceId: EntityId,
-  ): void {
-    const related = this.store.getById(config.targetCollection, relatedId) as
-      | (CollectionEntityMap[typeof config.targetCollection] &
-          Record<string, unknown>)
-      | null;
-
-    if (!related) {
-      return;
-    }
-
-    const currentValues = Array.isArray(related[config.targetField])
-      ? (related[config.targetField] as EntityId[])
-      : [];
-
-    if (currentValues.includes(sourceId)) {
-      return;
-    }
-
-    const updated = {
-      ...related,
-      [config.targetField]: [...currentValues, sourceId],
-      updatedAt: nowIsoDate(),
-    } as CollectionEntityMap[typeof config.targetCollection];
-
-    this.store.set(config.targetCollection, updated);
-  }
-
-  private unlinkReverse(
-    config: RelationConfig,
-    relatedId: EntityId,
-    sourceId: EntityId,
-  ): void {
-    const related = this.store.getById(config.targetCollection, relatedId) as
-      | (CollectionEntityMap[typeof config.targetCollection] &
-          Record<string, unknown>)
-      | null;
-
-    if (!related) {
-      return;
-    }
-
-    const currentValues = Array.isArray(related[config.targetField])
-      ? (related[config.targetField] as EntityId[])
-      : [];
-
-    if (!currentValues.includes(sourceId)) {
-      return;
-    }
-
-    const updated = {
-      ...related,
-      [config.targetField]: currentValues.filter((value) => value !== sourceId),
-      updatedAt: nowIsoDate(),
-    } as CollectionEntityMap[typeof config.targetCollection];
-
-    this.store.set(config.targetCollection, updated);
   }
 
   private detachRelationsForDeletedEntity(
     deletedEntity: CollectionEntityMap[TCollection],
-  ): void {
-    const collectionConfig = RELATION_CONFIG[this.collection];
-
-    this.getRelationFields().forEach((field) => {
-      const config = collectionConfig[field];
-      if (!config) {
-        return;
-      }
-
-      const relatedIds = uniqueEntityIds(
-        this.readRelationIds(deletedEntity, field),
-      );
-
-      relatedIds.forEach((relatedId) => {
-        this.unlinkReverse(config, relatedId, deletedEntity.id);
-      });
+  ): Promise<void> {
+    return applyDetachRelationMutations({
+      collection: this.collection,
+      relationFields: this.getRelationFields(),
+      deletedEntity,
+      onRemove: (mutation) => {
+        return this.relationMutator.removeReverseLink(
+          mutation.config,
+          mutation.relatedId,
+          mutation.sourceId,
+        );
+      },
     });
   }
 
-  private removeInboundRelationsToDeletedEntity(deletedId: EntityId): void {
-    (Object.keys(RELATION_CONFIG) as EntityCollectionName[]).forEach(
-      (sourceCollection) => {
-        const sourceConfig = RELATION_CONFIG[sourceCollection];
-        const sourceRows = this.store.getAll(
-          sourceCollection,
-        ) as (CollectionEntityMap[typeof sourceCollection] &
-          Record<string, unknown>)[];
-
-        Object.entries(sourceConfig).forEach(([sourceField, config]) => {
-          if (!config || config.targetCollection !== this.collection) {
-            return;
-          }
-
-          sourceRows.forEach((row) => {
-            const current = Array.isArray(row[sourceField])
-              ? (row[sourceField] as EntityId[])
-              : [];
-
-            if (!current.includes(deletedId)) {
-              return;
-            }
-
-            const updated = {
-              ...row,
-              [sourceField]: current.filter((id) => id !== deletedId),
-              updatedAt: nowIsoDate(),
-            } as CollectionEntityMap[typeof sourceCollection];
-
-            this.store.set(sourceCollection, updated);
-          });
-        });
+  private removeInboundRelationsToDeletedEntity(
+    deletedId: EntityId,
+  ): Promise<void> {
+    return applyInboundCleanupSpecs({
+      targetCollection: this.collection,
+      onSpec: (cleanupSpec) => {
+        return this.relationMutator.cleanupInboundReference(
+          cleanupSpec,
+          deletedId,
+        );
       },
-    );
+    });
   }
 }
 

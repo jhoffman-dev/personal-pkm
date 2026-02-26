@@ -12,14 +12,22 @@ import {
   loadAppSettings,
   type AppSettings,
 } from "@/lib/app-settings";
+import { requestGoogleCalendarAccessToken } from "@/lib/google-calendar";
 import {
-  listGoogleCalendarEvents,
-  requestGoogleCalendarAccessToken,
-} from "@/lib/google-calendar";
+  loadStoredGoogleToken,
+  saveStoredGoogleToken,
+  syncGoogleCalendarEvents,
+  type StoredGoogleToken,
+} from "@/features/google-calendar";
+import {
+  buildBacklogTaskGroups,
+  type BacklogTaskGroup,
+} from "@/features/calendar";
 import {
   fromDateTimeLocalValue,
   isTaskTimeblockStale,
   loadTaskTimeblocks,
+  resolveTaskTimeblockDefaultMinutes,
   saveTaskTimeblocks,
   toDateTimeLocalValue,
   type TaskTimeblock,
@@ -41,13 +49,7 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const GOOGLE_CALENDAR_TOKEN_STORAGE_KEY = "pkm.google-calendar.token.v1";
 const CALENDAR_LAST_VIEW_STORAGE_KEY = "pkm.calendar.last-view.v1";
-
-type StoredGoogleToken = {
-  accessToken: string;
-  expiresAt: number;
-};
 
 type SelectedCalendarEvent = {
   id: string;
@@ -59,14 +61,6 @@ type SelectedCalendarEvent = {
   taskId?: string;
   startIso?: string;
   endIso?: string;
-};
-
-type BacklogTaskGroup = {
-  projectName: string;
-  tasks: Array<{
-    id: string;
-    title: string;
-  }>;
 };
 
 function loadLastCalendarView(): string {
@@ -96,50 +90,6 @@ function saveLastCalendarView(view: string): void {
   }
 
   window.localStorage.setItem(CALENDAR_LAST_VIEW_STORAGE_KEY, view);
-}
-
-function loadStoredGoogleToken(): StoredGoogleToken | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const raw = window.localStorage.getItem(GOOGLE_CALENDAR_TOKEN_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as StoredGoogleToken;
-    if (
-      !parsed.accessToken ||
-      !parsed.expiresAt ||
-      parsed.expiresAt <= Date.now()
-    ) {
-      window.localStorage.removeItem(GOOGLE_CALENDAR_TOKEN_STORAGE_KEY);
-      return null;
-    }
-
-    return parsed;
-  } catch {
-    window.localStorage.removeItem(GOOGLE_CALENDAR_TOKEN_STORAGE_KEY);
-    return null;
-  }
-}
-
-function saveStoredGoogleToken(token: StoredGoogleToken | null): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  if (!token) {
-    window.localStorage.removeItem(GOOGLE_CALENDAR_TOKEN_STORAGE_KEY);
-    return;
-  }
-
-  window.localStorage.setItem(
-    GOOGLE_CALENDAR_TOKEN_STORAGE_KEY,
-    JSON.stringify(token),
-  );
 }
 
 function isValidIsoDate(value?: string): boolean {
@@ -174,19 +124,6 @@ function formatEventDateTime(value: Date | null): string {
   }).format(value);
 }
 
-function isLikelyValidGoogleCalendarId(value: string): boolean {
-  const normalized = value.trim();
-  if (!normalized) {
-    return false;
-  }
-
-  if (normalized === "primary") {
-    return true;
-  }
-
-  return normalized.includes("@");
-}
-
 export function CalendarPage() {
   const dispatch = useAppDispatch();
   const meetingsState = useAppSelector((state) => state.meetings);
@@ -213,10 +150,9 @@ export function CalendarPage() {
   const [taskDialogEndValue, setTaskDialogEndValue] = useState("");
   const [isSavingTaskDialogTime, setIsSavingTaskDialogTime] = useState(false);
 
-  const defaultTaskTimeblockMinutes =
-    settings.taskTimeblockDefaultMinutes > 0
-      ? settings.taskTimeblockDefaultMinutes
-      : 30;
+  const defaultTaskTimeblockMinutes = resolveTaskTimeblockDefaultMinutes(
+    settings.taskTimeblockDefaultMinutes,
+  );
 
   const googleConfigured =
     settings.googleCalendarEnabled &&
@@ -242,7 +178,8 @@ export function CalendarPage() {
         return current;
       }
 
-      const { [taskId]: _removed, ...next } = current;
+      const next = { ...current };
+      delete next[taskId];
       saveTaskTimeblocks(next);
       return next;
     });
@@ -250,39 +187,16 @@ export function CalendarPage() {
 
   const syncGoogleEvents = useCallback(
     async (accessToken: string) => {
-      const calendarId = settings.googleCalendarCalendarId.trim() || "primary";
-      if (!isLikelyValidGoogleCalendarId(calendarId)) {
-        setGoogleStatus(
-          "Invalid Calendar ID. Use `primary` or the calendar's actual ID (usually an email-like value such as name@group.calendar.google.com).",
-        );
-        return;
-      }
-
       setIsSyncingGoogle(true);
       setGoogleStatus(null);
 
       try {
-        const now = new Date();
-        const timeMin = new Date(
-          now.getFullYear(),
-          now.getMonth() - 1,
-          now.getDate(),
-        ).toISOString();
-        const timeMax = new Date(
-          now.getFullYear(),
-          now.getMonth() + 6,
-          now.getDate(),
-        ).toISOString();
-
-        const imported = await listGoogleCalendarEvents({
+        const result = await syncGoogleCalendarEvents({
           accessToken,
-          calendarId,
-          timeMin,
-          timeMax,
-          maxResults: 500,
+          calendarId: settings.googleCalendarCalendarId,
         });
 
-        const mapped: EventInput[] = imported.map((event) => ({
+        const mapped: EventInput[] = result.events.map((event) => ({
           id: `google-${event.id}`,
           title: event.title,
           start: event.start,
@@ -297,20 +211,13 @@ export function CalendarPage() {
         }));
 
         setGoogleEvents(mapped);
-        setGoogleStatus(
-          `Imported ${mapped.length} Google event${mapped.length === 1 ? "" : "s"}`,
-        );
+        setGoogleStatus(result.statusMessage);
       } catch (error) {
-        const rawMessage =
+        setGoogleStatus(
           error instanceof Error
             ? error.message
-            : "Failed to import Google Calendar events";
-
-        const message = rawMessage.toLowerCase().includes("bad request")
-          ? "Google Calendar request failed (400). Verify Calendar ID in Settings (use `primary` or the calendar's ID, not the calendar display name)."
-          : rawMessage;
-
-        setGoogleStatus(message);
+            : "Failed to import Google Calendar events",
+        );
       } finally {
         setIsSyncingGoogle(false);
       }
@@ -437,50 +344,14 @@ export function CalendarPage() {
   }, [tasksState.entities, tasksState.status]);
 
   const backlogTaskGroups = useMemo<BacklogTaskGroup[]>(() => {
-    const projectNameById = new Map<string, string>(
-      projectsState.ids
-        .map((id) => projectsState.entities[id])
-        .filter(Boolean)
-        .map((project) => [project.id, project.name]),
-    );
-
-    const grouped = new Map<string, BacklogTaskGroup>();
-    const unassignedKey = "No Project";
-
-    tasksState.ids
+    const projects = projectsState.ids
+      .map((id) => projectsState.entities[id])
+      .filter(Boolean);
+    const tasks = tasksState.ids
       .map((id) => tasksState.entities[id])
-      .filter(Boolean)
-      .filter(
-        (task) =>
-          (task.status === "next_action" || task.status === "in_progress") &&
-          !taskTimeblocks[task.id],
-      )
-      .forEach((task) => {
-        const firstProjectName = (task.projectIds ?? [])
-          .map((projectId) => projectNameById.get(projectId))
-          .find(Boolean);
+      .filter(Boolean);
 
-        const groupKey = firstProjectName ?? unassignedKey;
-        const current = grouped.get(groupKey) ?? {
-          projectName: groupKey,
-          tasks: [],
-        };
-
-        current.tasks.push({
-          id: task.id,
-          title: task.title,
-        });
-        grouped.set(groupKey, current);
-      });
-
-    return Array.from(grouped.values())
-      .map((group) => ({
-        ...group,
-        tasks: group.tasks.sort((left, right) =>
-          left.title.localeCompare(right.title),
-        ),
-      }))
-      .sort((left, right) => left.projectName.localeCompare(right.projectName));
+    return buildBacklogTaskGroups(tasks, projects, taskTimeblocks);
   }, [
     projectsState.entities,
     projectsState.ids,

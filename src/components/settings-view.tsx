@@ -20,6 +20,7 @@ import {
   loadAppSettings,
   saveAppSettings,
 } from "@/lib/app-settings";
+import { resolveTaskTimeblockDefaultMinutes } from "@/lib/task-timeblocks";
 import {
   getQueuedNoteLinkCount,
   processNoteLinkQueue,
@@ -117,7 +118,9 @@ function SettingsBody({
   const [settings, setSettings] = useState<AppSettings>(() =>
     loadAppSettings(),
   );
-  const [queuedLinkCount, setQueuedLinkCount] = useState(0);
+  const [queuedLinkCount, setQueuedLinkCount] = useState(() =>
+    getQueuedNoteLinkCount(),
+  );
   const [isProcessingLinks, setIsProcessingLinks] = useState(false);
   const [linkProcessingStatus, setLinkProcessingStatus] = useState<
     string | null
@@ -133,10 +136,6 @@ function SettingsBody({
     },
     [],
   );
-
-  useEffect(() => {
-    setQueuedLinkCount(getQueuedNoteLinkCount());
-  }, []);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -250,7 +249,9 @@ function SettingsBody({
                       updateSettings((current) => ({
                         ...current,
                         taskTimeblockDefaultMinutes:
-                          Number(event.target.value) || 30,
+                          resolveTaskTimeblockDefaultMinutes(
+                            Number(event.target.value),
+                          ),
                       }))
                     }
                     className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus-visible:ring-[3px] focus-visible:outline-none"

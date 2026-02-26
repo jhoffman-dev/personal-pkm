@@ -1,3 +1,5 @@
+import { resolveTaskTimeblockDefaultMinutes } from "@/features/task-timeblocking";
+
 export type AppSettings = {
   defaultPage: string;
   confirmBeforeDelete: boolean;
@@ -50,11 +52,12 @@ export function loadAppSettings(): AppSettings {
         parsed.confirmBeforeDelete ?? DEFAULT_APP_SETTINGS.confirmBeforeDelete,
       compactMode: parsed.compactMode ?? DEFAULT_APP_SETTINGS.compactMode,
       fontScale: parsed.fontScale ?? DEFAULT_APP_SETTINGS.fontScale,
-      taskTimeblockDefaultMinutes:
+      taskTimeblockDefaultMinutes: resolveTaskTimeblockDefaultMinutes(
         typeof parsed.taskTimeblockDefaultMinutes === "number" &&
-        Number.isFinite(parsed.taskTimeblockDefaultMinutes)
+          Number.isFinite(parsed.taskTimeblockDefaultMinutes)
           ? parsed.taskTimeblockDefaultMinutes
           : DEFAULT_APP_SETTINGS.taskTimeblockDefaultMinutes,
+      ),
       googleAiStudioApiKey:
         parsed.googleAiStudioApiKey ??
         DEFAULT_APP_SETTINGS.googleAiStudioApiKey,

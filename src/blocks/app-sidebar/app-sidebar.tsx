@@ -16,6 +16,7 @@ import avatarImage from "@/assets/Profile - Avatar - James Hoffman.png";
 import * as React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { getRouteTitle, isRouteActive, navItems } from "@/routes/navigation";
+import { prefetchRouteModule } from "@/routes/route-module-loaders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { deleteAssistantChat, upsertAssistantChat } from "@/lib/ai-client";
@@ -620,6 +621,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     >
                       <NavLink
                         to={item.to}
+                        onMouseEnter={() => {
+                          prefetchRouteModule(item.to);
+                        }}
+                        onFocus={() => {
+                          prefetchRouteModule(item.to);
+                        }}
                         onClick={() => {
                           setOpen(true);
                         }}

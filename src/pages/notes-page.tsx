@@ -6,15 +6,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 import {
-  createEmptyNoteInput,
-  DEFAULT_NOTE_BODY,
-  DEFAULT_NOTE_TITLE,
-} from "@/lib/note-defaults";
-import { addUnique, equalSet } from "@/lib/entity-link-utils";
+  appendUniqueTag,
+  buildQuickCompanyCreateInput,
+  buildQuickMeetingCreateInput,
+  buildQuickNoteCreateInput,
+  buildQuickPersonCreateInput,
+  buildQuickProjectCreateInput,
+  buildQuickTaskCreateInput,
+  buildSharedTagSuggestions,
+} from "@/features/tasks";
+import {
+  buildDeleteCurrentNotePlan,
+  buildDeleteSameTitleNotesPlan,
+  buildNoteBacklinks,
+  buildNoteUpdateInputFromDraft,
+  createNoteDraftState,
+  hasNoteDraftChanges,
+  reconcileNotesTabs,
+  runNoteDeleteWorkflow,
+} from "@/features/notes";
+import { addUnique } from "@/lib/entity-link-utils";
 import { normalizeParaType } from "@/lib/project-defaults";
-import { createEmptyProjectInput } from "@/lib/project-defaults";
-import { createEmptyTaskInput } from "@/lib/task-defaults";
 import { enqueueNoteForLinking } from "@/lib/note-linking-queue";
 import {
   dataActions,
@@ -25,11 +39,6 @@ import {
 } from "@/store";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-
-type LinkOption = {
-  id: string;
-  label: string;
-};
 
 function getTagColorStyle(tag: string): CSSProperties {
   let hash = 0;
@@ -175,72 +184,30 @@ export function NotesPage() {
   );
 
   const sharedTagSuggestions = useMemo(() => {
-    const values = new Set<string>();
-
-    sortedNotes.forEach((note) => {
-      (note.tags ?? []).forEach((tag) => {
-        if (tag.trim()) {
-          values.add(tag.trim());
-        }
-      });
-    });
-
-    projectsState.ids
+    const projects = projectsState.ids
       .map((id) => projectsState.entities[id])
-      .filter(Boolean)
-      .forEach((project) => {
-        (project.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    tasksState.ids
+      .filter(Boolean);
+    const tasks = tasksState.ids
       .map((id) => tasksState.entities[id])
-      .filter(Boolean)
-      .forEach((task) => {
-        (task.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    meetingsState.ids
+      .filter(Boolean);
+    const meetings = meetingsState.ids
       .map((id) => meetingsState.entities[id])
-      .filter(Boolean)
-      .forEach((meeting) => {
-        (meeting.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    companiesState.ids
+      .filter(Boolean);
+    const companies = companiesState.ids
       .map((id) => companiesState.entities[id])
-      .filter(Boolean)
-      .forEach((company) => {
-        (company.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    peopleState.ids
+      .filter(Boolean);
+    const people = peopleState.ids
       .map((id) => peopleState.entities[id])
-      .filter(Boolean)
-      .forEach((person) => {
-        (person.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
+      .filter(Boolean);
 
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
+    return buildSharedTagSuggestions([
+      sortedNotes,
+      projects,
+      tasks,
+      meetings,
+      companies,
+      people,
+    ]);
   }, [
     companiesState.entities,
     companiesState.ids,
@@ -256,70 +223,31 @@ export function NotesPage() {
   ]);
 
   const backlinks = useMemo(() => {
-    if (!selectedNote) {
-      return {
-        notes: [] as LinkOption[],
-        projects: [] as LinkOption[],
-        tasks: [] as LinkOption[],
-        meetings: [] as LinkOption[],
-        companies: [] as LinkOption[],
-        people: [] as LinkOption[],
-      };
-    }
-
-    const selectedId = selectedNote.id;
-    const noteBacklinks = sortedNotes
-      .filter(
-        (note) =>
-          note.id !== selectedId &&
-          (note.relatedNoteIds ?? []).includes(selectedId),
-      )
-      .map((note) => ({
-        id: note.id,
-        label: note.title || DEFAULT_NOTE_TITLE,
-      }));
-
-    const projectBacklinks = projectsState.ids
+    const projects = projectsState.ids
       .map((id) => projectsState.entities[id])
-      .filter(Boolean)
-      .filter((project) => project.noteIds.includes(selectedId))
-      .map((project) => ({ id: project.id, label: project.name }));
-
-    const taskBacklinks = tasksState.ids
+      .filter(Boolean);
+    const tasks = tasksState.ids
       .map((id) => tasksState.entities[id])
-      .filter(Boolean)
-      .filter((task) => task.noteIds.includes(selectedId))
-      .map((task) => ({ id: task.id, label: task.title }));
-
-    const meetingBacklinks = meetingsState.ids
+      .filter(Boolean);
+    const meetings = meetingsState.ids
       .map((id) => meetingsState.entities[id])
-      .filter(Boolean)
-      .filter((meeting) => meeting.noteIds.includes(selectedId))
-      .map((meeting) => ({ id: meeting.id, label: meeting.title }));
-
-    const companyBacklinks = companiesState.ids
+      .filter(Boolean);
+    const companies = companiesState.ids
       .map((id) => companiesState.entities[id])
-      .filter(Boolean)
-      .filter((company) => company.noteIds.includes(selectedId))
-      .map((company) => ({ id: company.id, label: company.name }));
-
-    const peopleBacklinks = peopleState.ids
+      .filter(Boolean);
+    const people = peopleState.ids
       .map((id) => peopleState.entities[id])
-      .filter(Boolean)
-      .filter((person) => person.noteIds.includes(selectedId))
-      .map((person) => ({
-        id: person.id,
-        label: `${person.firstName} ${person.lastName}`.trim(),
-      }));
+      .filter(Boolean);
 
-    return {
-      notes: noteBacklinks,
-      projects: projectBacklinks,
-      tasks: taskBacklinks,
-      meetings: meetingBacklinks,
-      companies: companyBacklinks,
-      people: peopleBacklinks,
-    };
+    return buildNoteBacklinks({
+      selectedNoteId: selectedNote?.id ?? null,
+      notes: sortedNotes,
+      projects,
+      tasks,
+      meetings,
+      companies,
+      people,
+    });
   }, [
     selectedNote,
     sortedNotes,
@@ -367,32 +295,34 @@ export function NotesPage() {
   ]);
 
   useEffect(() => {
-    if (notesState.status !== "succeeded") {
+    const reconciliation = reconcileNotesTabs({
+      notesStatus: notesState.status,
+      noteIds: notesState.ids,
+      openTabIds: notesTabsState.openTabIds,
+      activeTabId: notesTabsState.activeTabId,
+      sortedNoteIds: sortedNotes.map((note) => note.id),
+    });
+
+    if (!reconciliation) {
       return;
     }
 
-    const validIdSet = new Set(notesState.ids);
-    const nextOpenTabs = notesTabsState.openTabIds.filter((id) =>
-      validIdSet.has(id),
-    );
-
-    if (nextOpenTabs.length !== notesTabsState.openTabIds.length) {
-      dispatch(notesTabsActions.setOpenTabs(nextOpenTabs));
+    if (reconciliation.type === "set-open-tabs") {
+      dispatch(notesTabsActions.setOpenTabs(reconciliation.openTabIds));
       return;
     }
 
-    if (
-      notesTabsState.activeTabId &&
-      !validIdSet.has(notesTabsState.activeTabId)
-    ) {
-      dispatch(notesTabsActions.setActiveTab(nextOpenTabs[0] ?? null));
+    if (reconciliation.type === "set-active-tab") {
+      dispatch(notesTabsActions.setActiveTab(reconciliation.activeTabId));
       return;
     }
 
-    if (!notesTabsState.activeTabId && sortedNotes.length > 0) {
-      const fallbackId = nextOpenTabs[0] ?? sortedNotes[0].id;
+    if (reconciliation.type === "open-note-tab") {
       dispatch(
-        notesTabsActions.openNoteTab({ id: fallbackId, activate: true }),
+        notesTabsActions.openNoteTab({
+          id: reconciliation.id,
+          activate: reconciliation.activate,
+        }),
       );
     }
   }, [
@@ -411,71 +341,37 @@ export function NotesPage() {
   }, [dispatch, notesState.selectedId, notesTabsState.activeTabId]);
 
   useEffect(() => {
-    if (!selectedNote) {
-      setDraftBody(DEFAULT_NOTE_BODY);
-      setDraftTitle(DEFAULT_NOTE_TITLE);
-      setDraftTags([]);
-      setDraftRelatedNoteIds([]);
-      setDraftPersonIds([]);
-      setDraftCompanyIds([]);
-      setDraftProjectIds([]);
-      setDraftTaskIds([]);
-      setDraftMeetingIds([]);
-      return;
-    }
-
-    setDraftBody(selectedNote.body);
-    setDraftTitle(selectedNote.title || DEFAULT_NOTE_TITLE);
-    setDraftTags(selectedNote.tags ?? []);
-    setDraftRelatedNoteIds(selectedNote.relatedNoteIds ?? []);
-    setDraftPersonIds(selectedNote.personIds ?? []);
-    setDraftCompanyIds(selectedNote.companyIds ?? []);
-    setDraftProjectIds(selectedNote.projectIds ?? []);
-    setDraftTaskIds(selectedNote.taskIds ?? []);
-    setDraftMeetingIds(selectedNote.meetingIds ?? []);
-  }, [selectedNote?.id]);
+    const nextDraft = createNoteDraftState(selectedNote);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraftBody(nextDraft.body);
+    setDraftTitle(nextDraft.title);
+    setDraftTags(nextDraft.tags);
+    setDraftRelatedNoteIds(nextDraft.relatedNoteIds);
+    setDraftPersonIds(nextDraft.personIds);
+    setDraftCompanyIds(nextDraft.companyIds);
+    setDraftProjectIds(nextDraft.projectIds);
+    setDraftTaskIds(nextDraft.taskIds);
+    setDraftMeetingIds(nextDraft.meetingIds);
+  }, [selectedNote]);
 
   useEffect(() => {
     if (!selectedNote) {
       return;
     }
 
-    const titleChanged = draftTitle !== selectedNote.title;
-    const bodyChanged = draftBody !== selectedNote.body;
-    const tagsChanged = !equalSet(draftTags, selectedNote.tags ?? []);
-    const relatedNotesChanged = !equalSet(
-      draftRelatedNoteIds,
-      selectedNote.relatedNoteIds ?? [],
-    );
-    const peopleChanged = !equalSet(
-      draftPersonIds,
-      selectedNote.personIds ?? [],
-    );
-    const companiesChanged = !equalSet(
-      draftCompanyIds,
-      selectedNote.companyIds ?? [],
-    );
-    const projectsChanged = !equalSet(
-      draftProjectIds,
-      selectedNote.projectIds ?? [],
-    );
-    const tasksChanged = !equalSet(draftTaskIds, selectedNote.taskIds ?? []);
-    const meetingsChanged = !equalSet(
-      draftMeetingIds,
-      selectedNote.meetingIds ?? [],
-    );
+    const draft = {
+      title: draftTitle,
+      body: draftBody,
+      tags: draftTags,
+      relatedNoteIds: draftRelatedNoteIds,
+      personIds: draftPersonIds,
+      companyIds: draftCompanyIds,
+      projectIds: draftProjectIds,
+      taskIds: draftTaskIds,
+      meetingIds: draftMeetingIds,
+    };
 
-    if (
-      !titleChanged &&
-      !bodyChanged &&
-      !tagsChanged &&
-      !relatedNotesChanged &&
-      !peopleChanged &&
-      !companiesChanged &&
-      !projectsChanged &&
-      !tasksChanged &&
-      !meetingsChanged
-    ) {
+    if (!hasNoteDraftChanges({ note: selectedNote, draft })) {
       return;
     }
 
@@ -483,17 +379,7 @@ export function NotesPage() {
       void dispatch(
         dataThunks.notes.updateOne({
           id: selectedNote.id,
-          input: {
-            title: draftTitle,
-            body: draftBody,
-            tags: draftTags,
-            relatedNoteIds: draftRelatedNoteIds,
-            personIds: draftPersonIds,
-            companyIds: draftCompanyIds,
-            projectIds: draftProjectIds,
-            taskIds: draftTaskIds,
-            meetingIds: draftMeetingIds,
-          },
+          input: buildNoteUpdateInputFromDraft(draft),
         }),
       );
       enqueueNoteForLinking(selectedNote.id);
@@ -515,82 +401,55 @@ export function NotesPage() {
   ]);
 
   const addTag = () => {
-    const value = tagInput.trim();
-    if (!value) {
-      return;
+    const { nextTags, nextTagInput } = appendUniqueTag(draftTags, tagInput);
+    if (nextTags !== draftTags) {
+      setDraftTags(nextTags);
     }
-
-    const exists = draftTags.some(
-      (tag) => tag.toLowerCase() === value.toLowerCase(),
-    );
-    if (!exists) {
-      setDraftTags((prev) => [...prev, value]);
-    }
-    setTagInput("");
+    setTagInput(nextTagInput);
   };
 
   const deleteCurrentNote = async () => {
-    if (!selectedNote || isDeletingNotes) {
-      return;
-    }
+    const plan = buildDeleteCurrentNotePlan(selectedNote);
 
-    const confirmed = window.confirm(
-      `Delete note "${selectedNote.title || DEFAULT_NOTE_TITLE}"?`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setIsDeletingNotes(true);
-    try {
-      await dispatch(dataThunks.notes.deleteOne(selectedNote.id)).unwrap();
-    } finally {
-      setIsDeletingNotes(false);
-    }
+    await runNoteDeleteWorkflow({
+      isDeleting: isDeletingNotes,
+      plan,
+      confirm: (message) => window.confirm(message),
+      deleteByIds: async (noteIds) => {
+        await Promise.all(
+          noteIds.map((id) =>
+            dispatch(dataThunks.notes.deleteOne(id)).unwrap(),
+          ),
+        );
+      },
+      setIsDeleting: setIsDeletingNotes,
+    });
   };
 
   const deleteNotesWithSameTitle = async () => {
-    if (!selectedNote || isDeletingNotes) {
-      return;
-    }
+    const plan = buildDeleteSameTitleNotesPlan({
+      selectedNote,
+      sortedNotes,
+    });
 
-    const matchingIds = sortedNotes
-      .filter((note) => note.title === selectedNote.title)
-      .map((note) => note.id);
-
-    if (matchingIds.length === 0) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Delete ${matchingIds.length} note(s) titled "${selectedNote.title || DEFAULT_NOTE_TITLE}"?`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setIsDeletingNotes(true);
-    try {
-      await Promise.all(
-        matchingIds.map((id) =>
-          dispatch(dataThunks.notes.deleteOne(id)).unwrap(),
-        ),
-      );
-    } finally {
-      setIsDeletingNotes(false);
-    }
+    await runNoteDeleteWorkflow({
+      isDeleting: isDeletingNotes,
+      plan,
+      confirm: (message) => window.confirm(message),
+      deleteByIds: async (noteIds) => {
+        await Promise.all(
+          noteIds.map((id) =>
+            dispatch(dataThunks.notes.deleteOne(id)).unwrap(),
+          ),
+        );
+      },
+      setIsDeleting: setIsDeletingNotes,
+    });
   };
 
   const createQuickNote = async (label: string) => {
-    const title = label.trim() || DEFAULT_NOTE_TITLE;
     const created = await dispatch(
-      dataThunks.notes.createOne({
-        ...createEmptyNoteInput(),
-        title,
-        body: `<h1>${title}</h1><p></p>`,
-      }),
+      dataThunks.notes.createOne(buildQuickNoteCreateInput(label)),
     ).unwrap();
 
     return created.id;
@@ -598,12 +457,7 @@ export function NotesPage() {
 
   const createQuickTask = async (label: string) => {
     const created = await dispatch(
-      dataThunks.tasks.createOne(
-        createEmptyTaskInput({
-          title: label.trim() || "New task",
-          status: "inbox",
-        }),
-      ),
+      dataThunks.tasks.createOne(buildQuickTaskCreateInput(label)),
     ).unwrap();
 
     return created.id;
@@ -611,12 +465,7 @@ export function NotesPage() {
 
   const createQuickProject = async (label: string) => {
     const created = await dispatch(
-      dataThunks.projects.createOne(
-        createEmptyProjectInput({
-          name: label.trim() || "New project",
-          paraType: "project",
-        }),
-      ),
+      dataThunks.projects.createOne(buildQuickProjectCreateInput(label)),
     ).unwrap();
 
     return created.id;
@@ -624,17 +473,7 @@ export function NotesPage() {
 
   const createQuickMeeting = async (label: string) => {
     const created = await dispatch(
-      dataThunks.meetings.createOne({
-        title: label.trim() || "New meeting",
-        tags: [],
-        scheduledFor: new Date().toISOString(),
-        location: "",
-        personIds: [],
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-      }),
+      dataThunks.meetings.createOne(buildQuickMeetingCreateInput(label)),
     ).unwrap();
 
     return created.id;
@@ -642,39 +481,15 @@ export function NotesPage() {
 
   const createQuickCompany = async (label: string) => {
     const created = await dispatch(
-      dataThunks.companies.createOne({
-        name: label.trim() || "New company",
-        tags: [],
-        website: "",
-        personIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
+      dataThunks.companies.createOne(buildQuickCompanyCreateInput(label)),
     ).unwrap();
 
     return created.id;
   };
 
   const createQuickPerson = async (label: string) => {
-    const normalized = label.trim();
-    const parts = normalized.split(/\s+/).filter(Boolean);
-    const firstName = parts[0] || "New";
-    const lastName = parts.slice(1).join(" ") || "Person";
-
     const created = await dispatch(
-      dataThunks.people.createOne({
-        firstName,
-        lastName,
-        tags: [],
-        email: "",
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
+      dataThunks.people.createOne(buildQuickPersonCreateInput(label)),
     ).unwrap();
 
     return created.id;

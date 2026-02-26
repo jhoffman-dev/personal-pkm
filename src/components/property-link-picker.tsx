@@ -200,7 +200,7 @@ export function PropertyLinkPicker({
               disabled={isCreating}
             >
               <Plus className="size-4" />
-              {isCreating ? "Creating..." : `Add \"${query.trim()}\"`}
+              {isCreating ? "Creating..." : `Add "${query.trim()}"`}
             </Button>
           ) : null}
 

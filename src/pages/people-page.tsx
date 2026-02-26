@@ -136,6 +136,7 @@ export function PeoplePage() {
 
   useEffect(() => {
     if (!selectedPerson) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftFirstName("");
       setDraftLastName("");
       setDraftEmail("");
@@ -161,7 +162,7 @@ export function PeoplePage() {
     setDraftNoteIds(selectedPerson.noteIds ?? []);
     setDraftTaskIds(selectedPerson.taskIds ?? []);
     setDraftMeetingIds(selectedPerson.meetingIds ?? []);
-  }, [selectedPerson?.id]);
+  }, [selectedPerson]);
 
   useEffect(() => {
     if (!selectedPerson) {

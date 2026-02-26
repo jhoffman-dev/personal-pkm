@@ -12,12 +12,30 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { Task, TaskLevel, TaskStatus } from "@/data/entities";
-import { createEmptyNoteInput, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
-import { createEmptyProjectInput } from "@/lib/project-defaults";
+import type { TaskStatus } from "@/data/entities";
+import {
+  appendUniqueTag,
+  buildMainTaskNoteUpdateInput,
+  mergeMainNoteId,
+  buildChildTaskCreateInput,
+  buildQuickCompanyCreateInput,
+  buildQuickMeetingCreateInput,
+  buildQuickNoteCreateInput,
+  buildQuickPersonCreateInput,
+  buildQuickProjectCreateInput,
+  buildStoryCreateInput,
+  buildTaskDetailsUpdateInput,
+  planTaskTimeblockSync,
+  buildSharedTagSuggestions,
+  buildTaskTree,
+  getTaskProgress,
+  resolveMainTaskTitle,
+  selectMainTaskNote,
+  stripHtml,
+  type TaskNode,
+} from "@/features/tasks";
 import { normalizeParaType } from "@/lib/project-defaults";
 import {
-  createEmptyTaskInput,
   TASK_STATE_LABELS,
   TASK_STATES,
   normalizeTaskStatus,
@@ -39,83 +57,6 @@ import {
 } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-
-type TaskNode = Task & { children: TaskNode[] };
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function clampLevel(parentLevel: TaskLevel): TaskLevel {
-  if (parentLevel === "story") {
-    return "task";
-  }
-  return "subtask";
-}
-
-function getTaskProgress(node: TaskNode): number {
-  const descendants: TaskNode[] = [];
-
-  const walk = (current: TaskNode) => {
-    current.children.forEach((child) => {
-      descendants.push(child);
-      walk(child);
-    });
-  };
-
-  walk(node);
-
-  if (descendants.length === 0) {
-    return normalizeTaskStatus(node.status) === "complete" ? 100 : 0;
-  }
-
-  const completed = descendants.filter(
-    (task) => normalizeTaskStatus(task.status) === "complete",
-  ).length;
-
-  return Math.round((completed / descendants.length) * 100);
-}
-
-function buildTaskTree(tasks: Task[]): TaskNode[] {
-  const byId = new Map<string, TaskNode>();
-
-  tasks.forEach((task) => {
-    byId.set(task.id, {
-      ...task,
-      status: normalizeTaskStatus(task.status),
-      level: task.level ?? "task",
-      parentTaskId: task.parentTaskId ?? null,
-      notes: task.notes ?? "",
-      children: [],
-    });
-  });
-
-  const roots: TaskNode[] = [];
-
-  byId.forEach((node) => {
-    const parentId = node.parentTaskId;
-    if (!parentId || !byId.has(parentId)) {
-      roots.push(node);
-      return;
-    }
-
-    byId.get(parentId)?.children.push(node);
-  });
-
-  const sortRecursive = (items: TaskNode[]) => {
-    items.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
-    items.forEach((item) => sortRecursive(item.children));
-  };
-
-  sortRecursive(roots);
-  return roots;
-}
 
 export function TasksPage() {
   const dispatch = useAppDispatch();
@@ -272,75 +213,33 @@ export function TasksPage() {
   );
 
   const sharedTagSuggestions = useMemo(() => {
-    const values = new Set<string>();
-
-    tasksState.ids
+    const tasks = tasksState.ids
       .map((id) => tasksState.entities[id])
-      .filter(Boolean)
-      .forEach((task) => {
-        (task.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    projectsState.ids
+      .filter(Boolean);
+    const projects = projectsState.ids
       .map((id) => projectsState.entities[id])
-      .filter(Boolean)
-      .forEach((project) => {
-        (project.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    notesState.ids
+      .filter(Boolean);
+    const notes = notesState.ids
       .map((id) => notesState.entities[id])
-      .filter(Boolean)
-      .forEach((note) => {
-        (note.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    meetingsState.ids
+      .filter(Boolean);
+    const meetings = meetingsState.ids
       .map((id) => meetingsState.entities[id])
-      .filter(Boolean)
-      .forEach((meeting) => {
-        (meeting.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    companiesState.ids
+      .filter(Boolean);
+    const companies = companiesState.ids
       .map((id) => companiesState.entities[id])
-      .filter(Boolean)
-      .forEach((company) => {
-        (company.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
-
-    peopleState.ids
+      .filter(Boolean);
+    const people = peopleState.ids
       .map((id) => peopleState.entities[id])
-      .filter(Boolean)
-      .forEach((person) => {
-        (person.tags ?? []).forEach((tag) => {
-          if (tag.trim()) {
-            values.add(tag.trim());
-          }
-        });
-      });
+      .filter(Boolean);
 
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
+    return buildSharedTagSuggestions([
+      tasks,
+      projects,
+      notes,
+      meetings,
+      companies,
+      people,
+    ]);
   }, [
     companiesState.entities,
     companiesState.ids,
@@ -390,16 +289,16 @@ export function TasksPage() {
     setDetailsPersonIds(expandedTask.personIds ?? []);
     setDetailsCompanyIds(expandedTask.companyIds ?? []);
     setDetailsMeetingIds(expandedTask.meetingIds ?? []);
-    const linkedNotes = (expandedTask.noteIds ?? [])
-      .map((id) => notesState.entities[id])
-      .filter(Boolean);
-    const matchedByTitle = linkedNotes.find(
-      (note) => note.title === expandedTask.title,
-    );
-    const initialMainNote = matchedByTitle ?? linkedNotes[0] ?? null;
+    const initialMainNote = selectMainTaskNote({
+      mainNoteId: null,
+      noteById: notesState.entities,
+      currentTitle: expandedTask.title,
+      linkedNoteIds: expandedTask.noteIds ?? [],
+      allNoteIds: expandedTask.noteIds ?? [],
+    });
     setMainNoteId(initialMainNote?.id ?? null);
     setMainNoteBodyDraft(initialMainNote?.body ?? "");
-  }, [expandedTask?.id]);
+  }, [expandedTask, notesState.entities]);
 
   useEffect(() => {
     if (!expandedTask) {
@@ -412,31 +311,28 @@ export function TasksPage() {
       const startIso = fromDateTimeLocalValue(detailsTimeblockStart);
       const endIso = fromDateTimeLocalValue(detailsTimeblockEnd);
 
-      if (!startIso || !endIso) {
-        if (currentMap[expandedTask.id]) {
-          const { [expandedTask.id]: _removed, ...next } = currentMap;
-          saveTaskTimeblocks(next);
-        }
-        return;
-      }
-
-      if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
-        return;
-      }
-
-      saveTaskTimeblocks({
-        ...currentMap,
-        [expandedTask.id]: {
-          start: startIso,
-          end: endIso,
-        },
+      const syncPlan = planTaskTimeblockSync({
+        taskId: expandedTask.id,
+        startIso,
+        endIso,
+        currentMap,
       });
+
+      if (!syncPlan) {
+        return;
+      }
+
+      saveTaskTimeblocks(syncPlan.nextMap);
+
+      if (!syncPlan.dueDate) {
+        return;
+      }
 
       void dispatch(
         dataThunks.tasks.updateOne({
           id: expandedTask.id,
           input: {
-            dueDate: startIso,
+            dueDate: syncPlan.dueDate,
           },
         }),
       );
@@ -454,20 +350,18 @@ export function TasksPage() {
       void dispatch(
         dataThunks.tasks.updateOne({
           id: expandedTask.id,
-          input: {
-            title: detailsTitle || "Untitled task",
+          input: buildTaskDetailsUpdateInput({
+            title: detailsTitle,
             description: detailsDescription,
             tags: detailsTags,
             status: detailsStatus,
-            dueDate: detailsDueDate
-              ? new Date(detailsDueDate).toISOString()
-              : undefined,
+            dueDate: detailsDueDate,
             noteIds: detailsNoteIds,
             projectIds: detailsProjectIds,
             personIds: detailsPersonIds,
             companyIds: detailsCompanyIds,
             meetingIds: detailsMeetingIds,
-          },
+          }),
         }),
       );
     }, 500);
@@ -493,38 +387,23 @@ export function TasksPage() {
       return null;
     }
 
-    if (mainNoteId && notesState.entities[mainNoteId]) {
-      return mainNoteId;
-    }
+    const currentTitle = resolveMainTaskTitle({
+      draftTitle: detailsTitle,
+      fallbackTitle: expandedTask.title,
+    });
 
-    const currentTitle = detailsTitle.trim() || expandedTask.title.trim();
-
-    const linkedCandidates = detailsNoteIds
-      .map((id) => notesState.entities[id])
-      .filter(Boolean);
-
-    const linkedTitleMatch = linkedCandidates.find(
-      (note) => note.title === currentTitle,
-    );
-
-    const globalTitleMatch = notesState.ids
-      .map((id) => notesState.entities[id])
-      .filter(Boolean)
-      .filter((note) => note.title === currentTitle)
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      )[0];
-
-    const resolved =
-      linkedTitleMatch ?? linkedCandidates[0] ?? globalTitleMatch;
+    const resolved = selectMainTaskNote({
+      mainNoteId,
+      noteById: notesState.entities,
+      currentTitle,
+      linkedNoteIds: detailsNoteIds,
+      allNoteIds: notesState.ids,
+    });
 
     if (resolved) {
       setMainNoteId(resolved.id);
       setMainNoteBodyDraft(resolved.body);
-      setDetailsNoteIds((prev) =>
-        prev.includes(resolved.id) ? prev : [...prev, resolved.id],
-      );
+      setDetailsNoteIds((prev) => mergeMainNoteId(prev, resolved.id));
       return resolved.id;
     }
 
@@ -535,18 +414,12 @@ export function TasksPage() {
     setIsEnsuringMainNote(true);
     try {
       const created = await dispatch(
-        dataThunks.notes.createOne({
-          ...createEmptyNoteInput(),
-          title: currentTitle,
-          body: `<h1>${currentTitle}</h1><p></p>`,
-        }),
+        dataThunks.notes.createOne(buildQuickNoteCreateInput(currentTitle)),
       ).unwrap();
 
       setMainNoteId(created.id);
       setMainNoteBodyDraft(created.body);
-      setDetailsNoteIds((prev) =>
-        prev.includes(created.id) ? prev : [...prev, created.id],
-      );
+      setDetailsNoteIds((prev) => mergeMainNoteId(prev, created.id));
       return created.id;
     } finally {
       setIsEnsuringMainNote(false);
@@ -554,12 +427,9 @@ export function TasksPage() {
   };
 
   useEffect(() => {
-    if (!mainNoteId) {
-      return;
-    }
-
-    if (!detailsNoteIds.includes(mainNoteId)) {
-      setDetailsNoteIds((prev) => [...prev, mainNoteId]);
+    const merged = mergeMainNoteId(detailsNoteIds, mainNoteId);
+    if (merged.length !== detailsNoteIds.length) {
+      setDetailsNoteIds(merged);
     }
   }, [detailsNoteIds, mainNoteId]);
 
@@ -588,14 +458,13 @@ export function TasksPage() {
     }
 
     const mainNote = notesState.entities[mainNoteId];
-    if (!mainNote) {
-      return;
-    }
+    const updateInput = buildMainTaskNoteUpdateInput({
+      note: mainNote ?? null,
+      title: detailsTitle,
+      body: mainNoteBodyDraft,
+    });
 
-    const titleChanged = mainNote.title !== detailsTitle;
-    const bodyChanged = mainNote.body !== mainNoteBodyDraft;
-
-    if (!titleChanged && !bodyChanged) {
+    if (!updateInput) {
       return;
     }
 
@@ -603,10 +472,7 @@ export function TasksPage() {
       void dispatch(
         dataThunks.notes.updateOne({
           id: mainNoteId,
-          input: {
-            title: detailsTitle,
-            body: mainNoteBodyDraft,
-          },
+          input: updateInput,
         }),
       );
     }, 450);
@@ -624,12 +490,9 @@ export function TasksPage() {
     const title = newStoryTitle.trim();
     const created = await dispatch(
       dataThunks.tasks.createOne(
-        createEmptyTaskInput({
-          title: title || "New story",
-          level: "story",
-          projectIds: tasksViewState.selectedProjectId
-            ? [tasksViewState.selectedProjectId]
-            : [],
+        buildStoryCreateInput({
+          title,
+          selectedProjectId: tasksViewState.selectedProjectId,
         }),
       ),
     ).unwrap();
@@ -644,79 +507,39 @@ export function TasksPage() {
     }
 
     const created = await dispatch(
-      dataThunks.tasks.createOne(
-        createEmptyTaskInput({
-          title: `New ${clampLevel(parent.level)}`,
-          level: clampLevel(parent.level),
-          parentTaskId: parent.id,
-          projectIds: parent.projectIds ?? [],
-          status: normalizeTaskStatus(parent.status),
-        }),
-      ),
+      dataThunks.tasks.createOne(buildChildTaskCreateInput(parent)),
     ).unwrap();
 
     dispatch(tasksViewActions.setExpandedTaskId(created.id));
   };
 
   const createQuickNote = async (label: string) => {
-    const title = label.trim() || DEFAULT_NOTE_TITLE;
     const created = await dispatch(
-      dataThunks.notes.createOne({
-        ...createEmptyNoteInput(),
-        title,
-        body: `<h1>${title}</h1><p></p>`,
-      }),
+      dataThunks.notes.createOne(buildQuickNoteCreateInput(label)),
     ).unwrap();
 
     return created.id;
   };
 
   const addTag = () => {
-    const value = tagInput.trim();
-    if (!value) {
-      return;
+    const { nextTags, nextTagInput } = appendUniqueTag(detailsTags, tagInput);
+    if (nextTags !== detailsTags) {
+      setDetailsTags(nextTags);
     }
-
-    const exists = detailsTags.some(
-      (tag) => tag.toLowerCase() === value.toLowerCase(),
-    );
-    if (!exists) {
-      setDetailsTags((previous) => [...previous, value]);
-    }
-    setTagInput("");
+    setTagInput(nextTagInput);
   };
 
   const createQuickProject = async (label: string) => {
     const created = await dispatch(
-      dataThunks.projects.createOne(
-        createEmptyProjectInput({
-          name: label.trim() || "New project",
-          paraType: "project",
-        }),
-      ),
+      dataThunks.projects.createOne(buildQuickProjectCreateInput(label)),
     ).unwrap();
 
     return created.id;
   };
 
   const createQuickPerson = async (label: string) => {
-    const normalized = label.trim();
-    const parts = normalized.split(/\s+/).filter(Boolean);
-    const firstName = parts[0] || "New";
-    const lastName = parts.slice(1).join(" ") || "Person";
-
     const created = await dispatch(
-      dataThunks.people.createOne({
-        firstName,
-        lastName,
-        tags: [],
-        email: "",
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
+      dataThunks.people.createOne(buildQuickPersonCreateInput(label)),
     ).unwrap();
 
     return created.id;
@@ -724,16 +547,7 @@ export function TasksPage() {
 
   const createQuickCompany = async (label: string) => {
     const created = await dispatch(
-      dataThunks.companies.createOne({
-        name: label.trim() || "New company",
-        tags: [],
-        website: "",
-        personIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
+      dataThunks.companies.createOne(buildQuickCompanyCreateInput(label)),
     ).unwrap();
 
     return created.id;
@@ -741,17 +555,7 @@ export function TasksPage() {
 
   const createQuickMeeting = async (label: string) => {
     const created = await dispatch(
-      dataThunks.meetings.createOne({
-        title: label.trim() || "New meeting",
-        tags: [],
-        scheduledFor: new Date().toISOString(),
-        location: "",
-        personIds: [],
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-      }),
+      dataThunks.meetings.createOne(buildQuickMeetingCreateInput(label)),
     ).unwrap();
 
     return created.id;

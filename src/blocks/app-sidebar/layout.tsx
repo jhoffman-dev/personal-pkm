@@ -1,9 +1,11 @@
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/blocks/app-sidebar/app-sidebar";
 import { AppBar } from "@/components/app-bar";
+import { DevRouteTimingPanel } from "@/components/dev-route-timing-panel";
 import { Button } from "@/components/ui/button";
 import { createEmptyNoteInput } from "@/lib/note-defaults";
 import { getRouteTitle } from "@/routes/navigation";
+import { prefetchRouteModule } from "@/routes/route-module-loaders";
 import {
   dataActions,
   dataThunks,
@@ -66,6 +68,12 @@ export default function Layout() {
           type="button"
           size="icon"
           className="fixed right-6 bottom-6 z-50 size-12 rounded-full"
+          onMouseEnter={() => {
+            prefetchRouteModule("/notes");
+          }}
+          onFocus={() => {
+            prefetchRouteModule("/notes");
+          }}
           onClick={() => {
             void handleCreateNote();
           }}
@@ -74,6 +82,7 @@ export default function Layout() {
         >
           <Plus className="size-5" />
         </Button>
+        {import.meta.env.DEV ? <DevRouteTimingPanel /> : null}
       </SidebarInset>
     </SidebarProvider>
   );

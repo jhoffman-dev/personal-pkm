@@ -149,6 +149,7 @@ export function MeetingsPage() {
 
   useEffect(() => {
     if (!selectedMeeting) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftTitle("");
       setDraftScheduledFor("");
       setDraftLocation("");
@@ -170,7 +171,7 @@ export function MeetingsPage() {
     setDraftProjectIds(selectedMeeting.projectIds ?? []);
     setDraftNoteIds(selectedMeeting.noteIds ?? []);
     setDraftTaskIds(selectedMeeting.taskIds ?? []);
-  }, [selectedMeeting?.id]);
+  }, [selectedMeeting]);
 
   useEffect(() => {
     if (!selectedMeeting) {

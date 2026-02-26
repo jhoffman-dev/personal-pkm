@@ -151,6 +151,7 @@ export function ProjectsPage() {
 
   useEffect(() => {
     if (!selectedProject) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftName("");
       setDraftDescription("");
       setDraftTags([]);
@@ -172,7 +173,7 @@ export function ProjectsPage() {
     setDraftMeetingIds(selectedProject.meetingIds ?? []);
     setDraftPersonIds(selectedProject.personIds ?? []);
     setDraftCompanyIds(selectedProject.companyIds ?? []);
-  }, [selectedProject?.id]);
+  }, [selectedProject]);
 
   useEffect(() => {
     if (!selectedProject) {

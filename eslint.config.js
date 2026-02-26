@@ -8,6 +8,50 @@ import { defineConfig, globalIgnores } from "eslint/config";
 export default defineConfig([
   globalIgnores(["dist"]),
   {
+    files: ["src/pages/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/data/local/*", "@/data/firestore/*"],
+              message:
+                "Presentation layer should use data modules through '@/data' interfaces.",
+            },
+            {
+              group: ["@/features/*/infrastructure/*"],
+              message:
+                "Presentation layer should depend on feature entrypoints/application APIs, not infrastructure adapters.",
+            },
+            {
+              group: ["@/features/*/application/*", "@/features/*/domain/*"],
+              message:
+                "Presentation layer should import feature APIs from '@/features/<feature>' entrypoints.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/features/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/pages/*", "@/components/*"],
+              message:
+                "Feature layer must not depend on presentation components/pages.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     extends: [
       js.configs.recommended,
@@ -24,7 +68,22 @@ export default defineConfig([
         "warn",
         { allowConstantExport: true },
       ],
-      "react-refresh/sort-comp": "warn",
+    },
+  },
+  {
+    files: ["src/components/**/index.ts", "src/components/**/index.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: [
+      "src/components/theme-provider/theme-provider.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/sidebar.tsx",
+    ],
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
 ]);

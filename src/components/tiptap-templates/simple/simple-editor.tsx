@@ -215,19 +215,16 @@ export function SimpleEditor({
   const [uploadToastMessage, setUploadToastMessage] = useState<string | null>(
     null,
   );
+  const [toolbarHeight, setToolbarHeight] = useState(0);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const uploadToastTimeoutRef = useRef<number | null>(null);
 
   const showUploadToast = useCallback((message: string) => {
     setUploadToastMessage(message);
 
-    if (uploadToastTimeoutRef.current !== null) {
-      window.clearTimeout(uploadToastTimeoutRef.current);
-    }
-
-    uploadToastTimeoutRef.current = window.setTimeout(() => {
-      setUploadToastMessage(null);
-      uploadToastTimeoutRef.current = null;
+    window.setTimeout(() => {
+      setUploadToastMessage((current) =>
+        current === message ? null : current,
+      );
     }, 3500);
   }, []);
 
@@ -407,20 +404,34 @@ export function SimpleEditor({
 
   const rect = useCursorVisibility({
     editor,
-    overlayHeight: toolbarRef.current?.getBoundingClientRect().height ?? 0,
+    overlayHeight: toolbarHeight,
   });
+  const effectiveMobileView = isMobile ? mobileView : "main";
 
   useEffect(() => {
-    if (!isMobile && mobileView !== "main") {
-      setMobileView("main");
+    const toolbarElement = toolbarRef.current;
+    if (!toolbarElement) {
+      return;
     }
-  }, [isMobile, mobileView]);
 
-  useEffect(() => {
+    const measure = () => {
+      const nextHeight = toolbarElement.getBoundingClientRect().height;
+      setToolbarHeight(nextHeight);
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      measure();
+    });
+    observer.observe(toolbarElement);
+
     return () => {
-      if (uploadToastTimeoutRef.current !== null) {
-        window.clearTimeout(uploadToastTimeoutRef.current);
-      }
+      observer.disconnect();
     };
   }, []);
 
@@ -486,7 +497,7 @@ export function SimpleEditor({
               : {}),
           }}
         >
-          {mobileView === "main" ? (
+          {effectiveMobileView === "main" ? (
             <MainToolbarContent
               onHighlighterClick={() => setMobileView("highlighter")}
               onLinkClick={() => setMobileView("link")}
@@ -494,7 +505,9 @@ export function SimpleEditor({
             />
           ) : (
             <MobileToolbarContent
-              type={mobileView === "highlighter" ? "highlighter" : "link"}
+              type={
+                effectiveMobileView === "highlighter" ? "highlighter" : "link"
+              }
               onBack={() => setMobileView("main")}
             />
           )}

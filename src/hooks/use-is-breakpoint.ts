@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react";
 
-type BreakpointMode = "min" | "max"
+type BreakpointMode = "min" | "max";
 
 /**
  * Hook to detect whether the current viewport matches a given breakpoint rule.
@@ -10,26 +10,31 @@ type BreakpointMode = "min" | "max"
  */
 export function useIsBreakpoint(
   mode: BreakpointMode = "max",
-  breakpoint = 768
+  breakpoint = 768,
 ) {
-  const [matches, setMatches] = useState<boolean | undefined>(undefined)
+  const query =
+    mode === "min"
+      ? `(min-width: ${breakpoint}px)`
+      : `(max-width: ${breakpoint - 1}px)`;
 
-  useEffect(() => {
-    const query =
-      mode === "min"
-        ? `(min-width: ${breakpoint}px)`
-        : `(max-width: ${breakpoint - 1}px)`
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") {
+        return () => {};
+      }
 
-    const mql = window.matchMedia(query)
-    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches)
+      const mql = window.matchMedia(query);
+      const onChange = () => onStoreChange();
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    () => {
+      if (typeof window === "undefined") {
+        return false;
+      }
 
-    // Set initial value
-    setMatches(mql.matches)
-
-    // Add listener
-    mql.addEventListener("change", onChange)
-    return () => mql.removeEventListener("change", onChange)
-  }, [mode, breakpoint])
-
-  return !!matches
+      return window.matchMedia(query).matches;
+    },
+    () => false,
+  );
 }

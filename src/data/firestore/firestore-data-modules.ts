@@ -34,8 +34,16 @@ import type {
 } from "@/data/types";
 import { createEntityId, nowIsoDate } from "@/data/types";
 import {
-  arrayRemove,
-  arrayUnion,
+  relationFieldsFromDefaults,
+  uniqueEntityIds,
+} from "@/data/shared/relation-domain";
+import {
+  applyBidirectionalRelationMutations,
+  applyDetachRelationMutations,
+  applyInboundCleanupSpecs,
+} from "@/data/shared/relation-mutation-runner";
+import { FirestoreRelationMutator } from "@/data/firestore/firestore-relation-mutator";
+import {
   collection,
   deleteDoc,
   doc,
@@ -44,7 +52,6 @@ import {
   getDocs,
   query,
   setDoc,
-  updateDoc,
   where,
   type Firestore,
 } from "firebase/firestore";
@@ -52,67 +59,6 @@ import {
 type RelationArrays<TEntity> = {
   [K in RelationField<TEntity>]?: EntityId[];
 };
-
-type RelationConfig = {
-  targetCollection: EntityCollectionName;
-  targetField: string;
-};
-
-const RELATION_CONFIG: Record<
-  EntityCollectionName,
-  Partial<Record<string, RelationConfig>>
-> = {
-  projects: {
-    personIds: { targetCollection: "people", targetField: "projectIds" },
-    companyIds: { targetCollection: "companies", targetField: "projectIds" },
-    noteIds: { targetCollection: "notes", targetField: "projectIds" },
-    taskIds: { targetCollection: "tasks", targetField: "projectIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "projectIds" },
-  },
-  notes: {
-    relatedNoteIds: {
-      targetCollection: "notes",
-      targetField: "relatedNoteIds",
-    },
-    personIds: { targetCollection: "people", targetField: "noteIds" },
-    companyIds: { targetCollection: "companies", targetField: "noteIds" },
-    projectIds: { targetCollection: "projects", targetField: "noteIds" },
-    taskIds: { targetCollection: "tasks", targetField: "noteIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "noteIds" },
-  },
-  tasks: {
-    personIds: { targetCollection: "people", targetField: "taskIds" },
-    companyIds: { targetCollection: "companies", targetField: "taskIds" },
-    projectIds: { targetCollection: "projects", targetField: "taskIds" },
-    noteIds: { targetCollection: "notes", targetField: "taskIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "taskIds" },
-  },
-  meetings: {
-    personIds: { targetCollection: "people", targetField: "meetingIds" },
-    companyIds: { targetCollection: "companies", targetField: "meetingIds" },
-    projectIds: { targetCollection: "projects", targetField: "meetingIds" },
-    noteIds: { targetCollection: "notes", targetField: "meetingIds" },
-    taskIds: { targetCollection: "tasks", targetField: "meetingIds" },
-  },
-  companies: {
-    personIds: { targetCollection: "people", targetField: "companyIds" },
-    projectIds: { targetCollection: "projects", targetField: "companyIds" },
-    noteIds: { targetCollection: "notes", targetField: "companyIds" },
-    taskIds: { targetCollection: "tasks", targetField: "companyIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "companyIds" },
-  },
-  people: {
-    companyIds: { targetCollection: "companies", targetField: "personIds" },
-    projectIds: { targetCollection: "projects", targetField: "personIds" },
-    noteIds: { targetCollection: "notes", targetField: "personIds" },
-    taskIds: { targetCollection: "tasks", targetField: "personIds" },
-    meetingIds: { targetCollection: "meetings", targetField: "personIds" },
-  },
-};
-
-function uniqueEntityIds(values: EntityId[]): EntityId[] {
-  return Array.from(new Set(values.filter(Boolean)));
-}
 
 function chunkArray<T>(values: T[], size: number): T[][] {
   if (values.length === 0) {
@@ -153,6 +99,7 @@ class FirestoreRelationalDataModule<
   protected readonly uid: string;
   protected readonly collectionName: TCollection;
   protected readonly idPrefix: string;
+  protected readonly relationMutator: FirestoreRelationMutator;
   protected readonly relationDefaults: RelationArrays<
     CollectionEntityMap[TCollection]
   >;
@@ -168,6 +115,7 @@ class FirestoreRelationalDataModule<
     this.uid = uid;
     this.collectionName = collectionName;
     this.idPrefix = idPrefix;
+    this.relationMutator = new FirestoreRelationMutator(db, uid);
     this.relationDefaults = relationDefaults;
   }
 
@@ -294,7 +242,7 @@ class FirestoreRelationalDataModule<
   }
 
   private getRelationFields(): string[] {
-    return Object.keys(this.relationDefaults);
+    return relationFieldsFromDefaults(this.relationDefaults);
   }
 
   private normalizeRelations(
@@ -314,158 +262,54 @@ class FirestoreRelationalDataModule<
     return normalized as CollectionEntityMap[TCollection];
   }
 
-  private readRelationIds(entity: unknown, field: string): EntityId[] {
-    if (!entity || typeof entity !== "object") {
-      return [];
-    }
-
-    const record = entity as Record<string, unknown>;
-    const value = record[field];
-    return Array.isArray(value) ? (value as EntityId[]) : [];
-  }
-
   private async syncBidirectionalRelations(
     nextEntity: CollectionEntityMap[TCollection],
     previousEntity: CollectionEntityMap[TCollection] | null,
   ): Promise<void> {
-    const collectionConfig = RELATION_CONFIG[this.collectionName];
-
-    await Promise.all(
-      this.getRelationFields().map(async (field) => {
-        const config = collectionConfig[field];
-        if (!config) {
-          return;
-        }
-
-        const previousIds = uniqueEntityIds(
-          this.readRelationIds(previousEntity, field),
-        );
-        const nextIds = uniqueEntityIds(
-          this.readRelationIds(nextEntity, field),
-        );
-
-        const previousSet = new Set(previousIds);
-        const nextSet = new Set(nextIds);
-
-        const removedIds = previousIds.filter((id) => !nextSet.has(id));
-        const addedIds = nextIds.filter((id) => !previousSet.has(id));
-
-        await Promise.all([
-          ...addedIds.map((relatedId) =>
-            this.linkReverse(config, relatedId, nextEntity.id),
-          ),
-          ...removedIds.map((relatedId) =>
-            this.unlinkReverse(config, relatedId, nextEntity.id),
-          ),
-        ]);
-      }),
-    );
-  }
-
-  private async linkReverse(
-    config: RelationConfig,
-    relatedId: EntityId,
-    sourceId: EntityId,
-  ): Promise<void> {
-    const targetRef = doc(
-      collection(this.db, "users", this.uid, config.targetCollection),
-      relatedId,
-    );
-
-    try {
-      await updateDoc(targetRef, {
-        [config.targetField]: arrayUnion(sourceId),
-        updatedAt: nowIsoDate(),
-      });
-    } catch {
-      // Target may not exist yet; ignore in first pass.
-    }
-  }
-
-  private async unlinkReverse(
-    config: RelationConfig,
-    relatedId: EntityId,
-    sourceId: EntityId,
-  ): Promise<void> {
-    const targetRef = doc(
-      collection(this.db, "users", this.uid, config.targetCollection),
-      relatedId,
-    );
-
-    try {
-      await updateDoc(targetRef, {
-        [config.targetField]: arrayRemove(sourceId),
-        updatedAt: nowIsoDate(),
-      });
-    } catch {
-      // Target may not exist; ignore.
-    }
+    await applyBidirectionalRelationMutations({
+      collection: this.collectionName,
+      relationFields: this.getRelationFields(),
+      nextEntity,
+      previousEntity,
+      onAdd: (mutation) =>
+        this.relationMutator.addReverseLink(
+          mutation.config,
+          mutation.relatedId,
+          mutation.sourceId,
+        ),
+      onRemove: (mutation) =>
+        this.relationMutator.removeReverseLink(
+          mutation.config,
+          mutation.relatedId,
+          mutation.sourceId,
+        ),
+    });
   }
 
   private async detachRelationsForDeletedEntity(
     deletedEntity: CollectionEntityMap[TCollection],
   ): Promise<void> {
-    const collectionConfig = RELATION_CONFIG[this.collectionName];
-
-    await Promise.all(
-      this.getRelationFields().map(async (field) => {
-        const config = collectionConfig[field];
-        if (!config) {
-          return;
-        }
-
-        const relatedIds = uniqueEntityIds(
-          this.readRelationIds(deletedEntity, field),
-        );
-
-        await Promise.all(
-          relatedIds.map((relatedId) =>
-            this.unlinkReverse(config, relatedId, deletedEntity.id),
-          ),
-        );
-      }),
-    );
+    await applyDetachRelationMutations({
+      collection: this.collectionName,
+      relationFields: this.getRelationFields(),
+      deletedEntity,
+      onRemove: (mutation) =>
+        this.relationMutator.removeReverseLink(
+          mutation.config,
+          mutation.relatedId,
+          mutation.sourceId,
+        ),
+    });
   }
 
   private async removeInboundRelationsToDeletedEntity(
     deletedId: EntityId,
   ): Promise<void> {
-    await Promise.all(
-      (Object.keys(RELATION_CONFIG) as EntityCollectionName[]).map(
-        async (sourceCollection) => {
-          const sourceConfig = RELATION_CONFIG[sourceCollection];
-
-          await Promise.all(
-            Object.entries(sourceConfig).map(async ([sourceField, config]) => {
-              if (!config || config.targetCollection !== this.collectionName) {
-                return;
-              }
-
-              const sourceRef = collection(
-                this.db,
-                "users",
-                this.uid,
-                sourceCollection,
-              );
-              const sourceQuery = query(
-                sourceRef,
-                where(sourceField, "array-contains", deletedId),
-              );
-              const sourceSnapshot = await getDocs(sourceQuery);
-
-              await Promise.all(
-                sourceSnapshot.docs.map((row) =>
-                  updateDoc(row.ref, {
-                    [sourceField]: arrayRemove(deletedId),
-                    updatedAt: nowIsoDate(),
-                  }),
-                ),
-              );
-            }),
-          );
-        },
-      ),
-    );
+    await applyInboundCleanupSpecs({
+      targetCollection: this.collectionName,
+      onSpec: (cleanupSpec) =>
+        this.relationMutator.cleanupInboundReference(cleanupSpec, deletedId),
+    });
   }
 }
 

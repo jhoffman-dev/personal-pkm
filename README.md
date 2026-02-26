@@ -9,6 +9,12 @@
 
 Desktop artifacts are output to the `release/` directory.
 
+## Architecture
+
+- Clean architecture notes: `docs/architecture/clean-architecture.md`
+- Refactor pass tracker: `docs/architecture/refactor-passes.md`
+- Unit tests: `npm run test`
+
 ## AI Backend (Node + Electron)
 
 - Electron now starts a local Node backend automatically on `http://127.0.0.1:11435`.
