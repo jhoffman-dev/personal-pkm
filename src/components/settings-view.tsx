@@ -239,6 +239,30 @@ function SettingsBody({
                   />
                   Compact density mode
                 </label>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">
+                    Default task timeblock duration
+                  </label>
+                  <select
+                    value={String(settings.taskTimeblockDefaultMinutes)}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        taskTimeblockDefaultMinutes:
+                          Number(event.target.value) || 30,
+                      }))
+                    }
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+                  >
+                    <option value="10">10 minutes</option>
+                    <option value="20">20 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="40">40 minutes</option>
+                    <option value="50">50 minutes</option>
+                    <option value="60">60 minutes</option>
+                  </select>
+                </div>
               </CardContent>
             </Card>
           </div>

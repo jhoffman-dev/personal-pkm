@@ -3,6 +3,7 @@ export type AppSettings = {
   confirmBeforeDelete: boolean;
   compactMode: boolean;
   fontScale: number;
+  taskTimeblockDefaultMinutes: number;
   googleAiStudioApiKey: string;
   googleCalendarEnabled: boolean;
   googleCalendarClientId: string;
@@ -20,6 +21,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   confirmBeforeDelete: true,
   compactMode: false,
   fontScale: 100,
+  taskTimeblockDefaultMinutes: 30,
   googleAiStudioApiKey: "",
   googleCalendarEnabled: false,
   googleCalendarClientId: "",
@@ -48,6 +50,11 @@ export function loadAppSettings(): AppSettings {
         parsed.confirmBeforeDelete ?? DEFAULT_APP_SETTINGS.confirmBeforeDelete,
       compactMode: parsed.compactMode ?? DEFAULT_APP_SETTINGS.compactMode,
       fontScale: parsed.fontScale ?? DEFAULT_APP_SETTINGS.fontScale,
+      taskTimeblockDefaultMinutes:
+        typeof parsed.taskTimeblockDefaultMinutes === "number" &&
+        Number.isFinite(parsed.taskTimeblockDefaultMinutes)
+          ? parsed.taskTimeblockDefaultMinutes
+          : DEFAULT_APP_SETTINGS.taskTimeblockDefaultMinutes,
       googleAiStudioApiKey:
         parsed.googleAiStudioApiKey ??
         DEFAULT_APP_SETTINGS.googleAiStudioApiKey,

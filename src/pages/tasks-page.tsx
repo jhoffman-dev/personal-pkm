@@ -23,6 +23,13 @@ import {
   normalizeTaskStatus,
 } from "@/lib/task-defaults";
 import { addUnique } from "@/lib/entity-link-utils";
+import { loadAppSettings } from "@/lib/app-settings";
+import {
+  fromDateTimeLocalValue,
+  loadTaskTimeblocks,
+  saveTaskTimeblocks,
+  toDateTimeLocalValue,
+} from "@/lib/task-timeblocks";
 import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor";
 import {
   dataThunks,
@@ -127,6 +134,8 @@ export function TasksPage() {
   const [tagInput, setTagInput] = useState("");
   const [detailsStatus, setDetailsStatus] = useState<TaskStatus>("inbox");
   const [detailsDueDate, setDetailsDueDate] = useState("");
+  const [detailsTimeblockStart, setDetailsTimeblockStart] = useState("");
+  const [detailsTimeblockEnd, setDetailsTimeblockEnd] = useState("");
   const [detailsNoteIds, setDetailsNoteIds] = useState<string[]>([]);
   const [detailsProjectIds, setDetailsProjectIds] = useState<string[]>([]);
   const [detailsPersonIds, setDetailsPersonIds] = useState<string[]>([]);
@@ -354,6 +363,8 @@ export function TasksPage() {
       setDetailsTags([]);
       setDetailsStatus("inbox");
       setDetailsDueDate("");
+      setDetailsTimeblockStart("");
+      setDetailsTimeblockEnd("");
       setDetailsNoteIds([]);
       setDetailsProjectIds([]);
       setDetailsPersonIds([]);
@@ -371,6 +382,9 @@ export function TasksPage() {
     setDetailsDueDate(
       expandedTask.dueDate ? expandedTask.dueDate.slice(0, 10) : "",
     );
+    const taskTimeblock = loadTaskTimeblocks()[expandedTask.id];
+    setDetailsTimeblockStart(toDateTimeLocalValue(taskTimeblock?.start));
+    setDetailsTimeblockEnd(toDateTimeLocalValue(taskTimeblock?.end));
     setDetailsNoteIds(expandedTask.noteIds ?? []);
     setDetailsProjectIds(expandedTask.projectIds ?? []);
     setDetailsPersonIds(expandedTask.personIds ?? []);
@@ -386,6 +400,50 @@ export function TasksPage() {
     setMainNoteId(initialMainNote?.id ?? null);
     setMainNoteBodyDraft(initialMainNote?.body ?? "");
   }, [expandedTask?.id]);
+
+  useEffect(() => {
+    if (!expandedTask) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const currentMap = loadTaskTimeblocks();
+
+      const startIso = fromDateTimeLocalValue(detailsTimeblockStart);
+      const endIso = fromDateTimeLocalValue(detailsTimeblockEnd);
+
+      if (!startIso || !endIso) {
+        if (currentMap[expandedTask.id]) {
+          const { [expandedTask.id]: _removed, ...next } = currentMap;
+          saveTaskTimeblocks(next);
+        }
+        return;
+      }
+
+      if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+        return;
+      }
+
+      saveTaskTimeblocks({
+        ...currentMap,
+        [expandedTask.id]: {
+          start: startIso,
+          end: endIso,
+        },
+      });
+
+      void dispatch(
+        dataThunks.tasks.updateOne({
+          id: expandedTask.id,
+          input: {
+            dueDate: startIso,
+          },
+        }),
+      );
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [detailsTimeblockEnd, detailsTimeblockStart, dispatch, expandedTask]);
 
   useEffect(() => {
     if (!expandedTask) {
@@ -938,6 +996,30 @@ export function TasksPage() {
                     value={detailsDueDate}
                     onChange={(event) => setDetailsDueDate(event.target.value)}
                   />
+                </div>
+
+                <div className="space-y-2 border rounded-md p-2">
+                  <label className="text-xs font-medium">Timeblock</label>
+                  <input
+                    type="datetime-local"
+                    value={detailsTimeblockStart}
+                    onChange={(event) =>
+                      setDetailsTimeblockStart(event.target.value)
+                    }
+                    className="border rounded-md bg-background w-full px-2 py-2 text-sm"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={detailsTimeblockEnd}
+                    onChange={(event) =>
+                      setDetailsTimeblockEnd(event.target.value)
+                    }
+                    className="border rounded-md bg-background w-full px-2 py-2 text-sm"
+                  />
+                  <div className="text-muted-foreground text-[11px]">
+                    Default duration:{" "}
+                    {loadAppSettings().taskTimeblockDefaultMinutes}m
+                  </div>
                 </div>
 
                 <div className="space-y-1">
