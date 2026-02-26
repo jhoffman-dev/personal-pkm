@@ -668,10 +668,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             }
 
                             dispatch(
-                              notesTabsActions.openNoteTab({
-                                id: note.id,
-                                activate: true,
-                              }),
+                              notesTabsActions.replaceActiveTab(note.id),
                             );
                             dispatch(dataActions.notes.setSelectedId(note.id));
                           }}

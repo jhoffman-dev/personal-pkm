@@ -39,6 +39,36 @@ export const notesTabsSlice = createSlice({
       }
       state.activeTabId = id;
     },
+    replaceActiveTab(state, action: PayloadAction<EntityId>) {
+      const nextId = action.payload;
+      const currentActiveId = state.activeTabId;
+
+      if (!currentActiveId) {
+        state.openTabIds = [nextId];
+        state.activeTabId = nextId;
+        return;
+      }
+
+      if (currentActiveId === nextId) {
+        state.activeTabId = nextId;
+        return;
+      }
+
+      const activeIndex = state.openTabIds.findIndex(
+        (tabId) => tabId === currentActiveId,
+      );
+
+      const remainingTabs = state.openTabIds.filter(
+        (tabId) => tabId !== currentActiveId && tabId !== nextId,
+      );
+
+      const insertIndex =
+        activeIndex >= 0 ? Math.min(activeIndex, remainingTabs.length) : 0;
+      remainingTabs.splice(insertIndex, 0, nextId);
+
+      state.openTabIds = remainingTabs;
+      state.activeTabId = nextId;
+    },
     closeNoteTab(state, action: PayloadAction<EntityId>) {
       const id = action.payload;
       const closingIndex = state.openTabIds.findIndex((tabId) => tabId === id);

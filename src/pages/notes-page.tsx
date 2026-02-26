@@ -680,47 +680,49 @@ export function NotesPage() {
 
   return (
     <section className="h-[calc(100svh-41px)] p-6">
-      <Card className="h-full gap-0 py-0">
-        <CardContent className="flex h-full min-h-0 flex-col p-0">
-          <div className="bg-card flex items-center gap-1 border-b p-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              {openTabs.map((note) => {
-                const isActive = notesTabsState.activeTabId === note.id;
-                return (
-                  <div
-                    key={note.id}
-                    className="bg-background inline-flex items-center gap-1 rounded-md border"
-                  >
-                    <button
-                      type="button"
-                      className={`px-3 py-1.5 text-sm whitespace-nowrap ${
-                        isActive ? "text-foreground" : "text-muted-foreground"
-                      }`}
-                      onClick={() => {
-                        dispatch(notesTabsActions.setActiveTab(note.id));
-                        dispatch(dataActions.notes.setSelectedId(note.id));
-                      }}
+      <Card className="h-full min-w-0 overflow-hidden gap-0 py-0">
+        <CardContent className="flex h-full min-h-0 min-w-0 flex-col p-0">
+          <div className="bg-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b p-2">
+            <div className="min-w-0 overflow-x-auto">
+              <div className="flex w-max min-w-full items-center gap-1 pr-1">
+                {openTabs.map((note) => {
+                  const isActive = notesTabsState.activeTabId === note.id;
+                  return (
+                    <div
+                      key={note.id}
+                      className="bg-background inline-flex min-w-0 items-center gap-1 rounded-md border"
                     >
-                      {note.title || DEFAULT_NOTE_TITLE}
-                    </button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      className="mr-1"
-                      aria-label="Close note tab"
-                      onClick={() => {
-                        dispatch(notesTabsActions.closeNoteTab(note.id));
-                      }}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-                );
-              })}
+                      <button
+                        type="button"
+                        className={`max-w-64 truncate px-3 py-1.5 text-sm whitespace-nowrap ${
+                          isActive ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                        onClick={() => {
+                          dispatch(notesTabsActions.setActiveTab(note.id));
+                          dispatch(dataActions.notes.setSelectedId(note.id));
+                        }}
+                      >
+                        {note.title || DEFAULT_NOTE_TITLE}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="mr-1"
+                        aria-label="Close note tab"
+                        onClick={() => {
+                          dispatch(notesTabsActions.closeNoteTab(note.id));
+                        }}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="ml-2 flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
               <Button
                 type="button"
                 size="sm"
@@ -753,15 +755,16 @@ export function NotesPage() {
             </div>
           </div>
 
-          <div className="flex h-full min-h-0">
-            <div className="h-full min-h-0 flex-1 p-4">
+          <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+            <div className="h-full min-h-0 min-w-0 flex-1 p-4">
               {selectedNote ? (
                 <div className="flex h-full min-h-0 flex-col gap-3">
-                  <Input
+                  <input
+                    type="text"
                     value={draftTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
                     placeholder="Note title"
-                    className="text-base font-semibold"
+                    className="w-full border-0 bg-transparent px-0 text-center text-[2.5rem] leading-[1.1] font-bold outline-none"
                   />
 
                   <SimpleEditor
@@ -777,7 +780,7 @@ export function NotesPage() {
               )}
             </div>
 
-            <aside className="border-l bg-muted/10 h-full w-80 shrink-0 space-y-5 overflow-y-auto p-4">
+            <aside className="border-l bg-muted/10 h-full w-80 max-w-80 shrink-0 basis-80 space-y-5 overflow-y-auto p-4">
               <div>
                 <h3 className="text-base font-semibold">Properties</h3>
                 <p className="text-muted-foreground mt-1 text-xs">
@@ -950,10 +953,7 @@ export function NotesPage() {
                             className="hover:bg-muted block w-full rounded-md px-2 py-1 text-left"
                             onClick={() => {
                               dispatch(
-                                notesTabsActions.openNoteTab({
-                                  id: item.id,
-                                  activate: true,
-                                }),
+                                notesTabsActions.replaceActiveTab(item.id),
                               );
                             }}
                           >

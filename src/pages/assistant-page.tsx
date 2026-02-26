@@ -1,11 +1,25 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import type {
+  Company,
+  Meeting,
+  Note,
+  Person,
+  Project,
+  Task,
+} from "@/data/entities";
 import { sendChatStream, type ChatMessage } from "@/lib/ai-client";
 import { loadAppSettings } from "@/lib/app-settings";
 import { firebaseAuth } from "@/lib/firebase";
 import {
+  buildRagContextBlock,
+  retrieveRelevantDocuments,
+  type RagDocument,
+} from "@/lib/rag-context";
+import {
   ASSISTANT_STORAGE_EVENT,
+  type AssistantConversation,
   type AssistantProvider,
   createEmptyConversation,
   DEFAULT_CONVERSATION_TITLE,
@@ -16,9 +30,10 @@ import {
   type StoredAssistantState,
   type UiMessage,
 } from "@/lib/assistant-storage";
+import { dataThunks, useAppDispatch, useAppSelector } from "@/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const ASSISTANT_PAGE_SOURCE = "assistant-page";
 
@@ -27,6 +42,35 @@ const PROVIDER_DEFAULT_MODELS: Record<AssistantProvider, string> = {
   gemini: "gemini-2.5-flash",
   vertex: "gemini-2.5-flash",
 };
+
+const SCROLL_BOTTOM_THRESHOLD_PX = 80;
+
+function toPlainText(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncate(value: string, maxLength = 600): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}…`;
+}
+
+function personName(person: Person): string {
+  return `${person.firstName} ${person.lastName}`.replace(/\s+/g, " ").trim();
+}
+
+function conversationExcerpt(conversation: AssistantConversation): string {
+  return conversation.messages
+    .slice(-8)
+    .map((message) => `${message.role}: ${toPlainText(message.content)}`)
+    .join("\n")
+    .trim();
+}
 
 function parseThinkingAndReply(content: string): {
   thinking: string;
@@ -59,7 +103,93 @@ function parseThinkingAndReply(content: string): {
   };
 }
 
+function extractCitedSourceIndexes(content: string): number[] {
+  const orderedIndexes: number[] = [];
+  const seenIndexes = new Set<number>();
+  const citationRegex = /\[(\d+)\]/g;
+
+  let match = citationRegex.exec(content);
+  while (match) {
+    const value = Number(match[1]);
+    if (Number.isInteger(value) && value > 0 && !seenIndexes.has(value)) {
+      seenIndexes.add(value);
+      orderedIndexes.push(value);
+    }
+
+    match = citationRegex.exec(content);
+  }
+
+  return orderedIndexes;
+}
+
+function resolveCitedSources(
+  content: string,
+  sources: RagDocument[],
+): {
+  citationIndex: number;
+  originalCitationIndex: number;
+  source: RagDocument;
+}[] {
+  const citedIndexes = extractCitedSourceIndexes(content);
+  const resolved = citedIndexes
+    .map((originalCitationIndex, index) => {
+      const source = sources[originalCitationIndex - 1];
+      if (!source) {
+        return null;
+      }
+
+      return {
+        citationIndex: index + 1,
+        originalCitationIndex,
+        source,
+      };
+    })
+    .filter(Boolean) as {
+    citationIndex: number;
+    originalCitationIndex: number;
+    source: RagDocument;
+  }[];
+
+  const seenSourceIds = new Set<string>();
+  return resolved.filter((entry) => {
+    if (seenSourceIds.has(entry.source.id)) {
+      return false;
+    }
+
+    seenSourceIds.add(entry.source.id);
+    return true;
+  });
+}
+
+function remapCitationIndexes(
+  content: string,
+  citedSources: { citationIndex: number; originalCitationIndex: number }[],
+): string {
+  if (citedSources.length === 0) {
+    return content;
+  }
+
+  const indexMap = new Map<number, number>();
+  citedSources.forEach((entry) => {
+    indexMap.set(entry.originalCitationIndex, entry.citationIndex);
+  });
+
+  return content.replace(/\[(\d+)\]/g, (_value, indexText: string) => {
+    const original = Number(indexText);
+    const remapped = indexMap.get(original);
+
+    return remapped ? `[${remapped}]` : `[${indexText}]`;
+  });
+}
+
 export function AssistantPage() {
+  const dispatch = useAppDispatch();
+  const projectsState = useAppSelector((state) => state.projects);
+  const notesState = useAppSelector((state) => state.notes);
+  const tasksState = useAppSelector((state) => state.tasks);
+  const meetingsState = useAppSelector((state) => state.meetings);
+  const companiesState = useAppSelector((state) => state.companies);
+  const peopleState = useAppSelector((state) => state.people);
   const userId = firebaseAuth.currentUser?.uid ?? "guest";
   const [assistantState, setAssistantState] = useState<StoredAssistantState>(
     () => loadAssistantState(userId),
@@ -72,8 +202,39 @@ export function AssistantPage() {
     null,
   );
   const [streamingThinking, setStreamingThinking] = useState("");
+  const [ragSourcesByMessageId, setRagSourcesByMessageId] = useState<
+    Record<string, RagDocument[]>
+  >({});
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const geminiApiKey = loadAppSettings().googleAiStudioApiKey.trim();
   const isGeminiKeyConfigured = geminiApiKey.length > 0;
+
+  const isNearBottom = (container: HTMLDivElement) => {
+    return (
+      container.scrollHeight - container.scrollTop - container.clientHeight <=
+      SCROLL_BOTTOM_THRESHOLD_PX
+    );
+  };
+
+  const scrollMessagesToBottom = (
+    behavior: ScrollBehavior = "auto",
+    force = false,
+  ) => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    if (!force && !autoScrollEnabled) {
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior,
+    });
+  };
 
   useEffect(() => {
     setAssistantState(loadAssistantState(userId));
@@ -87,6 +248,35 @@ export function AssistantPage() {
         // Keep in-memory state if backend hydration fails.
       });
   }, [userId]);
+
+  useEffect(() => {
+    if (projectsState.status === "idle") {
+      void dispatch(dataThunks.projects.fetchAll());
+    }
+    if (notesState.status === "idle") {
+      void dispatch(dataThunks.notes.fetchAll());
+    }
+    if (tasksState.status === "idle") {
+      void dispatch(dataThunks.tasks.fetchAll());
+    }
+    if (meetingsState.status === "idle") {
+      void dispatch(dataThunks.meetings.fetchAll());
+    }
+    if (companiesState.status === "idle") {
+      void dispatch(dataThunks.companies.fetchAll());
+    }
+    if (peopleState.status === "idle") {
+      void dispatch(dataThunks.people.fetchAll());
+    }
+  }, [
+    companiesState.status,
+    dispatch,
+    meetingsState.status,
+    notesState.status,
+    peopleState.status,
+    projectsState.status,
+    tasksState.status,
+  ]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -130,6 +320,19 @@ export function AssistantPage() {
 
   const messages = activeConversation?.messages ?? [];
 
+  useEffect(() => {
+    setAutoScrollEnabled(true);
+    scrollMessagesToBottom("auto", true);
+  }, [assistantState.activeConversationId, messages.length]);
+
+  useEffect(() => {
+    if (!streamingMessageId) {
+      return;
+    }
+
+    scrollMessagesToBottom("auto");
+  }, [streamingMessageId, streamingThinking]);
+
   const chatHistory = useMemo<ChatMessage[]>(
     () =>
       messages.map((message) => ({
@@ -138,6 +341,155 @@ export function AssistantPage() {
       })),
     [messages],
   );
+
+  const ragDocuments = useMemo(() => {
+    const projects: Project[] = projectsState.ids
+      .map((id) => projectsState.entities[id])
+      .filter(Boolean);
+    const notes: Note[] = notesState.ids
+      .map((id) => notesState.entities[id])
+      .filter(Boolean);
+    const tasks: Task[] = tasksState.ids
+      .map((id) => tasksState.entities[id])
+      .filter(Boolean);
+    const meetings: Meeting[] = meetingsState.ids
+      .map((id) => meetingsState.entities[id])
+      .filter(Boolean);
+    const companies: Company[] = companiesState.ids
+      .map((id) => companiesState.entities[id])
+      .filter(Boolean);
+    const people: Person[] = peopleState.ids
+      .map((id) => peopleState.entities[id])
+      .filter(Boolean);
+
+    const documents = [
+      ...projects.map((project) => ({
+        id: `project:${project.id}`,
+        sourceType: "Project",
+        title: project.name || "Untitled project",
+        updatedAt: project.updatedAt,
+        content: truncate(
+          [
+            project.description,
+            (project.tags ?? []).join(" "),
+            project.paraType,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        ),
+      })),
+      ...notes.map((note) => ({
+        id: `note:${note.id}`,
+        sourceType: "Note",
+        title: note.title || "Untitled note",
+        updatedAt: note.updatedAt,
+        content: truncate(
+          [toPlainText(note.body), (note.tags ?? []).join(" ")]
+            .filter(Boolean)
+            .join("\n"),
+          900,
+        ),
+      })),
+      ...tasks.map((task) => ({
+        id: `task:${task.id}`,
+        sourceType: "Task",
+        title: task.title || "Untitled task",
+        updatedAt: task.updatedAt,
+        content: truncate(
+          [
+            task.description,
+            task.notes,
+            `status:${task.status}`,
+            `level:${task.level}`,
+            (task.tags ?? []).join(" "),
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        ),
+      })),
+      ...meetings.map((meeting) => ({
+        id: `meeting:${meeting.id}`,
+        sourceType: "Meeting",
+        title: meeting.title || "Untitled meeting",
+        updatedAt: meeting.updatedAt,
+        content: truncate(
+          [
+            meeting.location,
+            `scheduled:${meeting.scheduledFor}`,
+            (meeting.tags ?? []).join(" "),
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        ),
+      })),
+      ...companies.map((company) => ({
+        id: `company:${company.id}`,
+        sourceType: "Company",
+        title: company.name || "Untitled company",
+        updatedAt: company.updatedAt,
+        content: truncate(
+          [
+            company.email,
+            company.phone,
+            company.website,
+            company.address,
+            (company.tags ?? []).join(" "),
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        ),
+      })),
+      ...people.map((person) => ({
+        id: `person:${person.id}`,
+        sourceType: "Person",
+        title: personName(person) || "Unnamed person",
+        updatedAt: person.updatedAt,
+        content: truncate(
+          [
+            person.email,
+            person.phone,
+            person.address,
+            (person.tags ?? []).join(" "),
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        ),
+      })),
+      ...assistantState.conversations
+        .filter(
+          (conversation) =>
+            conversation.id !== assistantState.activeConversationId,
+        )
+        .map((conversation) => ({
+          id: `chat:${conversation.id}`,
+          sourceType: "Assistant Chat",
+          title: conversation.title || DEFAULT_CONVERSATION_TITLE,
+          updatedAt: conversation.updatedAt,
+          content: truncate(conversationExcerpt(conversation), 1200),
+        })),
+    ];
+
+    return documents.filter((document) => {
+      const title = document.title.trim();
+      const content = document.content.trim();
+      return title.length > 0 || content.length > 0;
+    });
+  }, [
+    assistantState.activeConversationId,
+    assistantState.conversations,
+    companiesState.entities,
+    companiesState.ids,
+    meetingsState.entities,
+    meetingsState.ids,
+    notesState.entities,
+    notesState.ids,
+    peopleState.entities,
+    peopleState.ids,
+    projectsState.entities,
+    projectsState.ids,
+    tasksState.entities,
+    tasksState.ids,
+  ]);
 
   const send = async () => {
     const value = prompt.trim();
@@ -190,6 +542,7 @@ export function AssistantPage() {
     setPrompt("");
     setError(null);
     setIsSending(true);
+    setAutoScrollEnabled(true);
     setStreamingMessageId(assistantMessageId);
     setStreamingThinking("Thinking...");
 
@@ -200,6 +553,19 @@ export function AssistantPage() {
 
       let rawStreamContent = "";
       let streamReportedDone = false;
+      const relevantDocuments = retrieveRelevantDocuments({
+        query: value,
+        documents: ragDocuments,
+      });
+      setRagSourcesByMessageId((previous) => ({
+        ...previous,
+        [assistantMessageId]: relevantDocuments,
+      }));
+      const ragContextBlock = buildRagContextBlock(relevantDocuments);
+      const baseSystemPrompt = assistantState.systemPrompt.trim();
+      const resolvedSystemPrompt = ragContextBlock
+        ? `${baseSystemPrompt}\n\nUse the following retrieved workspace context as reference. Prioritize it when relevant, and if context is incomplete, state uncertainty briefly. When you use retrieved context, cite sources inline using bracket indices like [1], [2] that map to the list below. Do not invent citations.\n\n${ragContextBlock}`
+        : baseSystemPrompt;
 
       await sendChatStream(
         {
@@ -209,7 +575,7 @@ export function AssistantPage() {
             assistantState.provider === "gemini"
               ? geminiApiKey || undefined
               : undefined,
-          systemPrompt: assistantState.systemPrompt.trim() || undefined,
+          systemPrompt: resolvedSystemPrompt || undefined,
           authToken,
           userId,
           conversationId,
@@ -301,6 +667,11 @@ export function AssistantPage() {
             : conversation,
         ),
       }));
+      setRagSourcesByMessageId((previous) => {
+        const next = { ...previous };
+        delete next[assistantMessageId];
+        return next;
+      });
     } finally {
       setIsSending(false);
       setStreamingMessageId(null);
@@ -316,6 +687,7 @@ export function AssistantPage() {
     const conversation = createEmptyConversation();
     setError(null);
     setPrompt("");
+    setAutoScrollEnabled(true);
     setAssistantState((previous) => ({
       ...previous,
       activeConversationId: conversation.id,
@@ -396,7 +768,14 @@ export function AssistantPage() {
               placeholder="System prompt"
             />
 
-            <div className="bg-muted/20 flex-1 space-y-2 overflow-y-auto rounded-md border p-3">
+            <div
+              ref={messagesContainerRef}
+              onScroll={(event) => {
+                const container = event.currentTarget;
+                setAutoScrollEnabled(isNearBottom(container));
+              }}
+              className="bg-muted/20 flex-1 space-y-2 overflow-y-auto rounded-md border p-3"
+            >
               {messages.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
                   Start chatting. Later this interface will also support RAG and
@@ -412,28 +791,75 @@ export function AssistantPage() {
                         : "bg-background border"
                     }`}
                   >
-                    {message.role === "assistant" ? (
-                      <div className="space-y-2">
-                        {streamingMessageId === message.id ? (
-                          <div className="bg-muted text-muted-foreground rounded-md border px-2 py-1 text-xs whitespace-pre-wrap">
-                            <p className="font-medium">Thinking</p>
-                            <p>{streamingThinking || "Thinking..."}</p>
-                          </div>
-                        ) : null}
+                    {message.role === "assistant"
+                      ? (() => {
+                          const candidateSources =
+                            ragSourcesByMessageId[message.id] ?? [];
+                          const citedSources = resolveCitedSources(
+                            message.content,
+                            candidateSources,
+                          );
+                          const remappedContent = remapCitationIndexes(
+                            message.content,
+                            citedSources,
+                          );
 
-                        <div className="[&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:italic [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_h1]:mt-1 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-1 [&_h2]:text-base [&_h2]:font-semibold [&_li]:my-0.5 [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_pre]:bg-muted [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:ml-5 [&_ul]:list-disc">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    ) : (
-                      message.content
-                    )}
+                          return (
+                            <div className="space-y-2">
+                              {streamingMessageId === message.id ? (
+                                <div className="bg-muted text-muted-foreground rounded-md border px-2 py-1 text-xs whitespace-pre-wrap">
+                                  <p className="font-medium">Thinking</p>
+                                  <p>{streamingThinking || "Thinking..."}</p>
+                                </div>
+                              ) : null}
+
+                              <div className="[&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:italic [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_h1]:mt-1 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-1 [&_h2]:text-base [&_h2]:font-semibold [&_li]:my-0.5 [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_pre]:bg-muted [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:ml-5 [&_ul]:list-disc">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {remappedContent}
+                                </ReactMarkdown>
+                              </div>
+
+                              {citedSources.length > 0 ? (
+                                <div className="mt-2 rounded-md border px-2 py-1 text-xs">
+                                  <p className="text-muted-foreground font-medium">
+                                    Sources
+                                  </p>
+                                  <ul className="mt-1 space-y-0.5">
+                                    {citedSources.map(
+                                      ({ citationIndex, source }) => (
+                                        <li key={`${message.id}:${source.id}`}>
+                                          [{citationIndex}] {source.sourceType}:{" "}
+                                          {source.title}
+                                        </li>
+                                      ),
+                                    )}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()
+                      : message.content}
                   </div>
                 ))
               )}
             </div>
+
+            {!autoScrollEnabled && messages.length > 0 ? (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setAutoScrollEnabled(true);
+                    scrollMessagesToBottom("smooth", true);
+                  }}
+                >
+                  Jump to latest
+                </Button>
+              </div>
+            ) : null}
 
             {error ? <p className="text-destructive text-xs">{error}</p> : null}
 

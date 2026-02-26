@@ -81,6 +81,18 @@ import "@/components/tiptap-templates/simple/simple-editor.scss";
 const DEFAULT_NOTE_CONTENT = DEFAULT_NOTE_BODY;
 const DEFAULT_STANDALONE_CONTENT = "<p></p>";
 
+function formatImageUploadError(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.message.includes("File size exceeds maximum allowed")) {
+      return `Image is too large. Maximum allowed size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.`;
+    }
+
+    return error.message;
+  }
+
+  return "Failed to upload image.";
+}
+
 const MainToolbarContent = ({
   onHighlighterClick,
   onLinkClick,
@@ -200,7 +212,24 @@ export function SimpleEditor({
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">(
     "main",
   );
+  const [uploadToastMessage, setUploadToastMessage] = useState<string | null>(
+    null,
+  );
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const uploadToastTimeoutRef = useRef<number | null>(null);
+
+  const showUploadToast = useCallback((message: string) => {
+    setUploadToastMessage(message);
+
+    if (uploadToastTimeoutRef.current !== null) {
+      window.clearTimeout(uploadToastTimeoutRef.current);
+    }
+
+    uploadToastTimeoutRef.current = window.setTimeout(() => {
+      setUploadToastMessage(null);
+      uploadToastTimeoutRef.current = null;
+    }, 3500);
+  }, []);
 
   const insertImagesFromFiles = useCallback(
     async (view: EditorView, files: File[]) => {
@@ -228,13 +257,13 @@ export function SimpleEditor({
             .scrollIntoView();
           view.dispatch(transaction);
         } catch (error) {
-          console.error("Failed to insert pasted image:", error);
+          showUploadToast(formatImageUploadError(error));
         }
       }
 
       return true;
     },
-    [],
+    [showUploadToast],
   );
 
   const extractTitle = useCallback((editorInstance: Editor) => {
@@ -356,7 +385,7 @@ export function SimpleEditor({
         maxSize: MAX_FILE_SIZE,
         limit: 3,
         upload: handleImageUpload,
-        onError: (error) => console.error("Upload failed:", error),
+        onError: (error) => showUploadToast(formatImageUploadError(error)),
       }),
     ],
     content:
@@ -386,6 +415,14 @@ export function SimpleEditor({
       setMobileView("main");
     }
   }, [isMobile, mobileView]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadToastTimeoutRef.current !== null) {
+        window.clearTimeout(uploadToastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!editor || content === undefined) {
@@ -433,6 +470,12 @@ export function SimpleEditor({
   return (
     <div className={cn("simple-editor-wrapper", className)}>
       <EditorContext.Provider value={{ editor }}>
+        {uploadToastMessage ? (
+          <div className="fixed top-4 right-4 z-50 rounded-md border bg-background px-3 py-2 text-sm text-destructive shadow-sm">
+            {uploadToastMessage}
+          </div>
+        ) : null}
+
         <Toolbar
           ref={toolbarRef}
           style={{
