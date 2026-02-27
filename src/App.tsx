@@ -10,6 +10,8 @@ import {
   loadCalendarPage,
   loadCompaniesPage,
   loadDashboardPage,
+  loadDrawingEmbedPage,
+  loadDrawingsPage,
   loadGraphPage,
   loadMeetingsPage,
   loadNotesPage,
@@ -28,6 +30,11 @@ const DashboardPage = lazy(() =>
 const NotesPage = lazy(() =>
   loadNotesPage().then((module) => ({
     default: module.NotesPage,
+  })),
+);
+const DrawingsPage = lazy(() =>
+  loadDrawingsPage().then((module) => ({
+    default: module.DrawingsPage,
   })),
 );
 const TasksPage = lazy(() =>
@@ -68,6 +75,11 @@ const GraphPage = lazy(() =>
 const AssistantPage = lazy(() =>
   loadAssistantPage().then((module) => ({
     default: module.AssistantPage,
+  })),
+);
+const DrawingEmbedPage = lazy(() =>
+  loadDrawingEmbedPage().then((module) => ({
+    default: module.DrawingEmbedPage,
   })),
 );
 
@@ -186,6 +198,10 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <Routes>
+        <Route
+          path="/drawings/:drawingId/embed"
+          element={withRouteSuspense(<DrawingEmbedPage />)}
+        />
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -193,6 +209,14 @@ function App() {
             element={withRouteSuspense(<DashboardPage />)}
           />
           <Route path="notes" element={withRouteSuspense(<NotesPage />)} />
+          <Route
+            path="drawings"
+            element={withRouteSuspense(<DrawingsPage />)}
+          />
+          <Route
+            path="drawings/:drawingId"
+            element={withRouteSuspense(<DrawingsPage />)}
+          />
           <Route path="tasks" element={withRouteSuspense(<TasksPage />)} />
           <Route
             path="meetings"

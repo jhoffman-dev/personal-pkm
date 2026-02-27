@@ -154,6 +154,43 @@ body,
   padding-bottom: 0;
 }
 
+.simple-editor-content .tiptap.ProseMirror.simple-editor .drawing-embed-node {
+  width: 100%;
+  max-width: 100%;
+  min-width: 18rem;
+  min-height: 20rem;
+  height: 26rem;
+  margin-top: 1rem;
+  border: 1px solid var(--tt-gray-light-a-300);
+  border-radius: 0.5rem;
+  overflow: auto;
+  resize: both;
+  background: var(--tt-bg-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.simple-editor-content
+  .tiptap.ProseMirror.simple-editor
+  .drawing-embed-node__frame {
+  width: 100%;
+  flex: 1;
+  min-height: 18rem;
+  border: 0;
+  background: var(--tt-bg-color);
+}
+
+.simple-editor-content
+  .tiptap.ProseMirror.simple-editor
+  .drawing-embed-node__link {
+  display: block;
+  border-top: 1px solid var(--tt-gray-light-a-200);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--tt-theme-text);
+  text-decoration: none;
+}
+
 @media screen and (max-width: 480px) {
   .simple-editor-content .tiptap.ProseMirror.simple-editor {
     padding: 1rem 1.25rem 8rem;

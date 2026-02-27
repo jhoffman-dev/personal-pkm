@@ -2,6 +2,7 @@ type RouteModuleLoader = () => Promise<unknown>;
 
 export const loadDashboardPage = () => import("@/pages/dashboard-page");
 export const loadNotesPage = () => import("@/pages/notes-page");
+export const loadDrawingsPage = () => import("@/pages/drawings-page");
 export const loadTasksPage = () => import("@/pages/tasks-page");
 export const loadMeetingsPage = () => import("@/pages/meetings-page");
 export const loadCalendarPage = () => import("@/pages/calendar-page");
@@ -10,10 +11,12 @@ export const loadCompaniesPage = () => import("@/pages/companies-page");
 export const loadPeoplePage = () => import("@/pages/people-page");
 export const loadGraphPage = () => import("@/pages/graph-page");
 export const loadAssistantPage = () => import("@/pages/assistant-page");
+export const loadDrawingEmbedPage = () => import("@/pages/drawing-embed-page");
 
 const routeModuleLoaders: Record<string, RouteModuleLoader> = {
   "/dashboard": loadDashboardPage,
   "/notes": loadNotesPage,
+  "/drawings": loadDrawingsPage,
   "/tasks": loadTasksPage,
   "/meetings": loadMeetingsPage,
   "/calendar": loadCalendarPage,
@@ -22,6 +25,7 @@ const routeModuleLoaders: Record<string, RouteModuleLoader> = {
   "/people": loadPeoplePage,
   "/graph": loadGraphPage,
   "/assistant": loadAssistantPage,
+  "/drawings/embed": loadDrawingEmbedPage,
 };
 
 const prefetchedRoutes = new Set<string>();
@@ -54,8 +58,9 @@ export function prefetchRouteModule(pathname: string): void {
 }
 
 const likelyNextRoutesByRoute: Record<string, string[]> = {
-  "/dashboard": ["/notes", "/tasks", "/assistant"],
-  "/notes": ["/tasks", "/assistant"],
+  "/dashboard": ["/notes", "/drawings", "/tasks", "/assistant"],
+  "/notes": ["/drawings", "/tasks", "/assistant"],
+  "/drawings": ["/notes", "/tasks"],
   "/tasks": ["/calendar", "/projects"],
   "/meetings": ["/calendar", "/companies", "/people"],
   "/calendar": ["/tasks", "/meetings"],

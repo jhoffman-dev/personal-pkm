@@ -7,6 +7,7 @@ import {
   type Editor,
   useEditor,
 } from "@tiptap/react";
+import { mergeAttributes, Node } from "@tiptap/core";
 
 // --- Tiptap Core Extensions ---
 import { StarterKit } from "@tiptap/starter-kit";
@@ -71,6 +72,7 @@ import { useWindowSize } from "@/hooks/use-window-size";
 import { useCursorVisibility } from "@/hooks/use-cursor-visibility";
 import { cn } from "@/lib/utils";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
+import { buildDrawingEmbedPath, buildDrawingPath } from "@/lib/drawing-links";
 
 // --- Lib ---
 import { handleImageUpload, MAX_FILE_SIZE } from "@/lib/tiptap-utils";
@@ -80,6 +82,64 @@ import "@/components/tiptap-templates/simple/simple-editor.scss";
 
 const DEFAULT_NOTE_CONTENT = DEFAULT_NOTE_BODY;
 const DEFAULT_STANDALONE_CONTENT = "<p></p>";
+
+const DrawingEmbedNode = Node.create({
+  name: "drawingEmbed",
+  group: "block",
+  atom: true,
+  draggable: true,
+  selectable: true,
+
+  addAttributes() {
+    return {
+      drawingId: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-drawing-id") ?? "",
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'div[data-type="drawing-embed"][data-drawing-id]',
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const drawingId = String(HTMLAttributes.drawingId ?? "");
+
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "drawing-embed",
+        "data-drawing-id": drawingId,
+        contenteditable: "false",
+        class: "drawing-embed-node",
+      }),
+      [
+        "iframe",
+        {
+          src: buildDrawingEmbedPath(drawingId),
+          class: "drawing-embed-node__frame",
+          loading: "lazy",
+          title: "Embedded drawing",
+        },
+      ],
+      [
+        "a",
+        {
+          href: buildDrawingPath(drawingId),
+          target: "_blank",
+          rel: "noreferrer noopener",
+          class: "drawing-embed-node__link",
+        },
+        "Open drawing",
+      ],
+    ];
+  },
+});
 
 function formatImageUploadError(error: unknown): string {
   if (error instanceof Error) {
@@ -377,6 +437,7 @@ export function SimpleEditor({
       Superscript,
       Subscript,
       Selection,
+      DrawingEmbedNode,
       ImageUploadNode.configure({
         accept: "image/*",
         maxSize: MAX_FILE_SIZE,

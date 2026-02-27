@@ -31,6 +31,11 @@ import { addUnique } from "@/lib/entity-link-utils";
 import { normalizeParaType } from "@/lib/project-defaults";
 import { enqueueNoteForLinking } from "@/lib/note-linking-queue";
 import {
+  buildDrawingEmbedHtml,
+  convertDrawingLinksToEmbedBlocks,
+} from "@/lib/drawing-links";
+import { listDrawings } from "@/lib/drawings-store";
+import {
   dataActions,
   dataThunks,
   notesTabsActions,
@@ -38,7 +43,13 @@ import {
   useAppSelector,
 } from "@/store";
 import { Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 function getTagColorStyle(tag: string): CSSProperties {
   let hash = 0;
@@ -101,6 +112,7 @@ export function NotesPage() {
   const [draftMeetingIds, setDraftMeetingIds] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
+  const hydratedNoteIdRef = useRef<string | null>(null);
 
   const notesWithSameTitleCount = useMemo(() => {
     if (!selectedNote) {
@@ -222,6 +234,8 @@ export function NotesPage() {
     tasksState.ids,
   ]);
 
+  const availableDrawings = listDrawings();
+
   const backlinks = useMemo(() => {
     const projects = projectsState.ids
       .map((id) => projectsState.entities[id])
@@ -341,9 +355,13 @@ export function NotesPage() {
   }, [dispatch, notesState.selectedId, notesTabsState.activeTabId]);
 
   useEffect(() => {
+    if (selectedNote?.id === hydratedNoteIdRef.current) {
+      return;
+    }
+
     const nextDraft = createNoteDraftState(selectedNote);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraftBody(nextDraft.body);
+    setDraftBody(convertDrawingLinksToEmbedBlocks(nextDraft.body));
     setDraftTitle(nextDraft.title);
     setDraftTags(nextDraft.tags);
     setDraftRelatedNoteIds(nextDraft.relatedNoteIds);
@@ -352,6 +370,7 @@ export function NotesPage() {
     setDraftProjectIds(nextDraft.projectIds);
     setDraftTaskIds(nextDraft.taskIds);
     setDraftMeetingIds(nextDraft.meetingIds);
+    hydratedNoteIdRef.current = selectedNote?.id ?? null;
   }, [selectedNote]);
 
   useEffect(() => {
@@ -584,11 +603,13 @@ export function NotesPage() {
                     className="w-full border-0 bg-transparent px-0 text-center text-[2.5rem] leading-[1.1] font-bold outline-none"
                   />
 
-                  <SimpleEditor
-                    content={draftBody}
-                    onContentChange={setDraftBody}
-                    className="h-full"
-                  />
+                  <div className="min-h-0 flex-1">
+                    <SimpleEditor
+                      content={draftBody}
+                      onContentChange={setDraftBody}
+                      className="h-full"
+                    />
+                  </div>
                 </div>
               ) : (
                 <p className="text-muted-foreground text-sm">
@@ -656,6 +677,39 @@ export function NotesPage() {
                     ))
                   )}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">Drawings</h4>
+                {availableDrawings.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">
+                    No drawings yet. Create one in the Drawings page.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {availableDrawings.slice(0, 8).map((drawing) => (
+                      <div
+                        key={drawing.id}
+                        className="flex items-center justify-between gap-2 rounded-md border px-2 py-1"
+                      >
+                        <p className="truncate text-xs">{drawing.title}</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setDraftBody(
+                              (previous) =>
+                                `${previous}${buildDrawingEmbedHtml(drawing.id)}`,
+                            );
+                          }}
+                        >
+                          Embed
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <PropertyLinkPicker

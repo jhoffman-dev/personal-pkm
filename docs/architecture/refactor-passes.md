@@ -298,6 +298,31 @@ Pass 14 outcome:
 - Development telemetry now shows directional route timing changes between
   snapshots, improving quick regression detection without affecting production.
 
+### Pass 15 — Drawings page + note embeds (completed)
+
+Completed in this pass:
+
+- Added Excalidraw-powered drawings workspace with local persistence and
+  deep-linkable drawing routes:
+  - `src/pages/drawings-page.tsx`
+  - `src/lib/drawings-store.ts`
+- Added standalone read-only drawing embed route for iframe embedding in notes:
+  - `src/pages/drawing-embed-page.tsx`
+- Added drawing route wiring across lazy route loaders, app routing, and sidebar
+  navigation:
+  - `src/routes/route-module-loaders.ts`
+  - `src/App.tsx`
+  - `src/routes/navigation.ts`
+- Added note-level drawing link parsing + embed rendering and quick link
+  insertion from the notes properties panel:
+  - `src/lib/drawing-links.ts`
+  - `src/pages/notes-page.tsx`
+
+Pass 15 outcome:
+
+- Drawings can now be created and saved inside the app, then linked and
+  embedded directly into notes for visual knowledge capture workflows.
+
 ## Working Rules for New Code
 
 1. Start from `src/features/<feature>/domain` for business rules.

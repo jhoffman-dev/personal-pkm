@@ -59,6 +59,17 @@ export default defineConfig({
           }
 
           if (
+            id.includes("node_modules/@excalidraw/") ||
+            id.includes("node_modules/roughjs") ||
+            id.includes("node_modules/browser-fs-access") ||
+            id.includes("node_modules/mermaid") ||
+            id.includes("node_modules/katex") ||
+            id.includes("node_modules/@fortawesome/")
+          ) {
+            return "vendor-excalidraw";
+          }
+
+          if (
             id.includes("node_modules/@radix-ui/") ||
             id.includes("node_modules/radix-ui") ||
             id.includes("node_modules/lucide-react")
