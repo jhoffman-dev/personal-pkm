@@ -323,6 +323,26 @@ Pass 15 outcome:
 - Drawings can now be created and saved inside the app, then linked and
   embedded directly into notes for visual knowledge capture workflows.
 
+### Pass 16 — Browser + bookmarks MVP (completed)
+
+Completed in this pass:
+
+- Added local browser bookmark persistence with URL normalization and upsert/
+  delete flows:
+  - `src/lib/browser-bookmarks.ts`
+- Added Browser page with address bar, in-app page preview, bookmark save,
+  bookmark list navigation, and external-open fallback:
+  - `src/pages/browser-page.tsx`
+- Wired Browser into navigation, lazy route loading, and route prefetch policy:
+  - `src/routes/navigation.ts`
+  - `src/routes/route-module-loaders.ts`
+  - `src/App.tsx`
+
+Pass 16 outcome:
+
+- The app now includes a built-in browser workspace with persistent bookmarks,
+  while preserving existing architecture and quality guardrails.
+
 ## Working Rules for New Code
 
 1. Start from `src/features/<feature>/domain` for business rules.

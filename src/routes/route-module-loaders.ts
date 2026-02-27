@@ -3,6 +3,7 @@ type RouteModuleLoader = () => Promise<unknown>;
 export const loadDashboardPage = () => import("@/pages/dashboard-page");
 export const loadNotesPage = () => import("@/pages/notes-page");
 export const loadDrawingsPage = () => import("@/pages/drawings-page");
+export const loadBrowserPage = () => import("@/pages/browser-page");
 export const loadTasksPage = () => import("@/pages/tasks-page");
 export const loadMeetingsPage = () => import("@/pages/meetings-page");
 export const loadCalendarPage = () => import("@/pages/calendar-page");
@@ -17,6 +18,7 @@ const routeModuleLoaders: Record<string, RouteModuleLoader> = {
   "/dashboard": loadDashboardPage,
   "/notes": loadNotesPage,
   "/drawings": loadDrawingsPage,
+  "/browser": loadBrowserPage,
   "/tasks": loadTasksPage,
   "/meetings": loadMeetingsPage,
   "/calendar": loadCalendarPage,
@@ -61,6 +63,7 @@ const likelyNextRoutesByRoute: Record<string, string[]> = {
   "/dashboard": ["/notes", "/drawings", "/tasks", "/assistant"],
   "/notes": ["/drawings", "/tasks", "/assistant"],
   "/drawings": ["/notes", "/tasks"],
+  "/browser": ["/notes", "/assistant"],
   "/tasks": ["/calendar", "/projects"],
   "/meetings": ["/calendar", "/companies", "/people"],
   "/calendar": ["/tasks", "/meetings"],

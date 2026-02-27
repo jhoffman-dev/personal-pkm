@@ -3,6 +3,7 @@ import {
   Bot,
   CalendarDays,
   ChartGantt,
+  Globe,
   PencilRuler,
   LayoutDashboard,
   ListTodo,
@@ -33,6 +34,11 @@ export const navItems: NavItem[] = [
     title: "Drawings",
     to: "/drawings",
     icon: PencilRuler,
+  },
+  {
+    title: "Browser",
+    to: "/browser",
+    icon: Globe,
   },
   {
     title: "Tasks",

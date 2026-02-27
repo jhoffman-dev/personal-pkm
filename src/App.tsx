@@ -8,6 +8,7 @@ import {
   getLikelyNextRoutes,
   loadAssistantPage,
   loadCalendarPage,
+  loadBrowserPage,
   loadCompaniesPage,
   loadDashboardPage,
   loadDrawingEmbedPage,
@@ -35,6 +36,11 @@ const NotesPage = lazy(() =>
 const DrawingsPage = lazy(() =>
   loadDrawingsPage().then((module) => ({
     default: module.DrawingsPage,
+  })),
+);
+const BrowserPage = lazy(() =>
+  loadBrowserPage().then((module) => ({
+    default: module.BrowserPage,
   })),
 );
 const TasksPage = lazy(() =>
@@ -217,6 +223,7 @@ function App() {
             path="drawings/:drawingId"
             element={withRouteSuspense(<DrawingsPage />)}
           />
+          <Route path="browser" element={withRouteSuspense(<BrowserPage />)} />
           <Route path="tasks" element={withRouteSuspense(<TasksPage />)} />
           <Route
             path="meetings"
