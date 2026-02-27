@@ -4,10 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EditorContent,
   EditorContext,
+  NodeViewWrapper,
+  ReactNodeViewRenderer,
   type Editor,
+  type NodeViewProps,
   useEditor,
 } from "@tiptap/react";
 import { mergeAttributes, Node } from "@tiptap/core";
+import { exportToSvg } from "@excalidraw/excalidraw";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
 // --- Tiptap Core Extensions ---
 import { StarterKit } from "@tiptap/starter-kit";
@@ -72,7 +77,8 @@ import { useWindowSize } from "@/hooks/use-window-size";
 import { useCursorVisibility } from "@/hooks/use-cursor-visibility";
 import { cn } from "@/lib/utils";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
-import { buildDrawingEmbedPath, buildDrawingPath } from "@/lib/drawing-links";
+import { buildDrawingPath } from "@/lib/drawing-links";
+import { getDrawingById } from "@/lib/drawings-store";
 
 // --- Lib ---
 import { handleImageUpload, MAX_FILE_SIZE } from "@/lib/tiptap-utils";
@@ -82,6 +88,116 @@ import "@/components/tiptap-templates/simple/simple-editor.scss";
 
 const DEFAULT_NOTE_CONTENT = DEFAULT_NOTE_BODY;
 const DEFAULT_STANDALONE_CONTENT = "<p></p>";
+
+function toSvgDataUrl(svg: SVGSVGElement): string {
+  const serialized = new XMLSerializer().serializeToString(svg);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+}
+
+function DrawingEmbedNodeView({ node }: NodeViewProps) {
+  const drawingId = String(node.attrs.drawingId ?? "");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const renderPreview = useCallback(async () => {
+    setIsRefreshing(true);
+
+    const drawing = getDrawingById(drawingId);
+    if (!drawing) {
+      setPreviewUrl(null);
+      setIsRefreshing(false);
+      return;
+    }
+
+    const elements = drawing.scene.elements.filter((element) => {
+      return !(
+        element &&
+        typeof element === "object" &&
+        "isDeleted" in element &&
+        (element as { isDeleted?: boolean }).isDeleted
+      );
+    }) as ExcalidrawElement[];
+
+    if (elements.length === 0) {
+      setPreviewUrl(null);
+      setIsRefreshing(false);
+      return;
+    }
+
+    try {
+      const svg = await exportToSvg({
+        elements,
+        appState: {
+          exportBackground: true,
+          viewBackgroundColor: "#ffffff",
+        },
+        files: null,
+        exportPadding: 16,
+      });
+
+      setPreviewUrl(toSvgDataUrl(svg));
+    } catch {
+      setPreviewUrl(null);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [drawingId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void renderPreview().catch(() => {
+      if (!cancelled) {
+        setPreviewUrl(null);
+        setIsRefreshing(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [renderPreview]);
+
+  return (
+    <NodeViewWrapper
+      as="div"
+      data-type="drawing-embed"
+      data-drawing-id={drawingId}
+      contentEditable={false}
+      className="drawing-embed-node"
+    >
+      {previewUrl ? (
+        <img
+          src={previewUrl}
+          alt="Embedded drawing preview"
+          className="drawing-embed-node__image"
+        />
+      ) : (
+        <div className="drawing-embed-node__empty">Drawing preview</div>
+      )}
+      <div className="drawing-embed-node__actions">
+        <a
+          href={buildDrawingPath(drawingId)}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="drawing-embed-node__link"
+        >
+          Open drawing
+        </a>
+        <button
+          type="button"
+          className="drawing-embed-node__refresh"
+          onClick={() => {
+            void renderPreview();
+          }}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+    </NodeViewWrapper>
+  );
+}
 
 const DrawingEmbedNode = Node.create({
   name: "drawingEmbed",
@@ -115,29 +231,12 @@ const DrawingEmbedNode = Node.create({
       mergeAttributes(HTMLAttributes, {
         "data-type": "drawing-embed",
         "data-drawing-id": drawingId,
-        contenteditable: "false",
-        class: "drawing-embed-node",
       }),
-      [
-        "iframe",
-        {
-          src: buildDrawingEmbedPath(drawingId),
-          class: "drawing-embed-node__frame",
-          loading: "lazy",
-          title: "Embedded drawing",
-        },
-      ],
-      [
-        "a",
-        {
-          href: buildDrawingPath(drawingId),
-          target: "_blank",
-          rel: "noreferrer noopener",
-          class: "drawing-embed-node__link",
-        },
-        "Open drawing",
-      ],
     ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(DrawingEmbedNodeView);
   },
 });
 
