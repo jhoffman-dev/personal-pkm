@@ -22,8 +22,13 @@ import {
 } from "firebase/auth";
 import { useEffect, useState, type ReactNode } from "react";
 
+const EMBED_ROUTE_PATTERN = /^\/drawings\/[^/]+\/embed\/?$/;
+
 export function FirebaseAuthGate({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
+  const isDrawingEmbedRoute =
+    typeof window !== "undefined" &&
+    EMBED_ROUTE_PATTERN.test(window.location.pathname);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,6 +38,12 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
   const [isCreateMode, setIsCreateMode] = useState(false);
 
   useEffect(() => {
+    if (isDrawingEmbedRoute) {
+      resetToLocalDataModules();
+      setIsLoading(false);
+      return;
+    }
+
     void getFirebaseAnalytics();
 
     void (async () => {
@@ -72,7 +83,11 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [dispatch]);
+  }, [dispatch, isDrawingEmbedRoute]);
+
+  if (isDrawingEmbedRoute) {
+    return <div className="h-svh">{children}</div>;
+  }
 
   const loginWithGoogle = async () => {
     setAuthError(null);
