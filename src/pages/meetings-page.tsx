@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SystemCustomPropertiesPanel } from "@/components/system-custom-properties-panel";
 import {
   PropertyLinkPicker,
   type PropertyOption,
@@ -15,7 +16,7 @@ import {
   useAppSelector,
 } from "@/store";
 import { Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function toDateTimeLocalValue(isoDateString: string): string {
   const date = new Date(isoDateString);
@@ -65,6 +66,7 @@ export function MeetingsPage() {
   const [draftProjectIds, setDraftProjectIds] = useState<string[]>([]);
   const [draftNoteIds, setDraftNoteIds] = useState<string[]>([]);
   const [draftTaskIds, setDraftTaskIds] = useState<string[]>([]);
+  const hydratedMeetingIdRef = useRef<string | null>(null);
   const {
     createQuickCompany,
     createQuickMeeting,
@@ -148,7 +150,12 @@ export function MeetingsPage() {
     : null;
 
   useEffect(() => {
+    if (selectedMeeting?.id === hydratedMeetingIdRef.current) {
+      return;
+    }
+
     if (!selectedMeeting) {
+      hydratedMeetingIdRef.current = null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftTitle("");
       setDraftScheduledFor("");
@@ -162,6 +169,8 @@ export function MeetingsPage() {
       return;
     }
 
+    hydratedMeetingIdRef.current = selectedMeeting.id;
+
     setDraftTitle(selectedMeeting.title);
     setDraftScheduledFor(toDateTimeLocalValue(selectedMeeting.scheduledFor));
     setDraftLocation(selectedMeeting.location ?? "");
@@ -171,7 +180,7 @@ export function MeetingsPage() {
     setDraftProjectIds(selectedMeeting.projectIds ?? []);
     setDraftNoteIds(selectedMeeting.noteIds ?? []);
     setDraftTaskIds(selectedMeeting.taskIds ?? []);
-  }, [selectedMeeting]);
+  }, [selectedMeeting, selectedMeeting?.id]);
 
   useEffect(() => {
     if (!selectedMeeting) {
@@ -553,6 +562,11 @@ export function MeetingsPage() {
                     );
                   }}
                   onCreateOption={createQuickTask}
+                />
+
+                <SystemCustomPropertiesPanel
+                  objectTypeId="object_type_meetings"
+                  recordId={selectedMeeting?.id ?? null}
                 />
               </>
             )}

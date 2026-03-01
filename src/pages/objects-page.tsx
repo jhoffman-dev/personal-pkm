@@ -1,7 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { Company, Person } from "@/data/entities";
+import type {
+  Company,
+  Meeting,
+  Note,
+  Person,
+  Project,
+  Task,
+} from "@/data/entities";
 import { firebaseAuth } from "@/lib/firebase";
 import {
   deleteObjectImageForUser,
@@ -14,6 +21,7 @@ import {
 import {
   createObjectRecord,
   deleteObjectRecord,
+  listObjectRecords,
   listObjectRecordsByType,
   upsertObjectRecord,
   updateObjectRecord,
@@ -25,16 +33,34 @@ import {
   type ObjectTypeDefinition,
   type ObjectTypeProperty,
 } from "@/lib/object-types-store";
-import { dataThunks, useAppDispatch, useAppSelector } from "@/store";
+import {
+  dataActions,
+  dataThunks,
+  notesTabsActions,
+  tasksViewActions,
+  useAppDispatch,
+  useAppSelector,
+} from "@/store";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 type ObjectsViewMode = "table" | "list" | "cards" | "detail";
 const OBJECT_VIEW_PREFERENCES_KEY = "pkm.object-view-preferences.v1";
 const PEOPLE_OBJECT_TYPE_ID = "object_type_people";
 const COMPANIES_OBJECT_TYPE_ID = "object_type_companies";
+const PROJECTS_OBJECT_TYPE_ID = "object_type_projects";
+const NOTES_OBJECT_TYPE_ID = "object_type_notes";
+const TASKS_OBJECT_TYPE_ID = "object_type_tasks";
+const MEETINGS_OBJECT_TYPE_ID = "object_type_meetings";
 
-type SystemEntityCollection = "people" | "companies";
+type SystemEntityCollection =
+  | "people"
+  | "companies"
+  | "projects"
+  | "notes"
+  | "tasks"
+  | "meetings";
 
 function getSystemCollectionForObjectType(
   objectTypeId: string | null,
@@ -45,6 +71,22 @@ function getSystemCollectionForObjectType(
 
   if (objectTypeId === COMPANIES_OBJECT_TYPE_ID) {
     return "companies";
+  }
+
+  if (objectTypeId === PROJECTS_OBJECT_TYPE_ID) {
+    return "projects";
+  }
+
+  if (objectTypeId === NOTES_OBJECT_TYPE_ID) {
+    return "notes";
+  }
+
+  if (objectTypeId === TASKS_OBJECT_TYPE_ID) {
+    return "tasks";
+  }
+
+  if (objectTypeId === MEETINGS_OBJECT_TYPE_ID) {
+    return "meetings";
   }
 
   return null;
@@ -61,6 +103,7 @@ function mappedSystemFieldKey(
   | "phone"
   | "address"
   | "photoUrl"
+  | "title"
   | null {
   const preferredPictureProperty =
     objectType.cardImagePropertyId &&
@@ -118,6 +161,30 @@ function mappedSystemFieldKey(
 
     if (property.id === "property_address") {
       return "address";
+    }
+  }
+
+  if (objectTypeId === PROJECTS_OBJECT_TYPE_ID) {
+    if (property.id === "property_project_name") {
+      return "name";
+    }
+  }
+
+  if (objectTypeId === NOTES_OBJECT_TYPE_ID) {
+    if (property.id === "property_note_title") {
+      return "title";
+    }
+  }
+
+  if (objectTypeId === TASKS_OBJECT_TYPE_ID) {
+    if (property.id === "property_task_title") {
+      return "title";
+    }
+  }
+
+  if (objectTypeId === MEETINGS_OBJECT_TYPE_ID) {
+    if (property.id === "property_meeting_title") {
+      return "title";
     }
   }
 
@@ -186,7 +253,41 @@ function formatRecordValue(value: ObjectRecordValue | undefined): string {
     return "";
   }
 
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
   return String(value);
+}
+
+function connectionIdsFromValue(
+  value: ObjectRecordValue | undefined,
+): string[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    if (trimmed.includes(",")) {
+      return Array.from(
+        new Set(
+          trimmed
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean),
+        ),
+      );
+    }
+
+    return [trimmed];
+  }
+
+  return [];
 }
 
 function getRecordTitle(
@@ -208,21 +309,33 @@ function getRecordTitle(
 
 export function ObjectsPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const peopleState = useAppSelector((state) => state.people);
   const companiesState = useAppSelector((state) => state.companies);
+  const projectsState = useAppSelector((state) => state.projects);
+  const notesState = useAppSelector((state) => state.notes);
+  const tasksState = useAppSelector((state) => state.tasks);
+  const meetingsState = useAppSelector((state) => state.meetings);
   const objectTypes = useMemo(() => listObjectTypes(), []);
+  const selectableObjectTypes = useMemo(
+    () => objectTypes.filter((item) => !item.isSystem),
+    [objectTypes],
+  );
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(
-    objectTypes[0]?.id ?? null,
+    selectableObjectTypes[0]?.id ?? null,
   );
   const [records, setRecords] = useState<ObjectRecord[]>(() =>
-    objectTypes[0]?.id ? listObjectRecordsByType(objectTypes[0].id) : [],
+    selectableObjectTypes[0]?.id
+      ? listObjectRecordsByType(selectableObjectTypes[0].id)
+      : [],
   );
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [viewPreferencesByTypeId, setViewPreferencesByTypeId] = useState(() =>
     loadObjectViewPreferences(),
   );
   const [viewMode, setViewMode] = useState<ObjectsViewMode>(() => {
-    const firstTypeId = objectTypes[0]?.id;
+    const firstTypeId = selectableObjectTypes[0]?.id;
     if (!firstTypeId) {
       return "table";
     }
@@ -244,8 +357,9 @@ export function ObjectsPage() {
   );
 
   const selectedType = useMemo(
-    () => objectTypes.find((item) => item.id === selectedTypeId) ?? null,
-    [objectTypes, selectedTypeId],
+    () =>
+      selectableObjectTypes.find((item) => item.id === selectedTypeId) ?? null,
+    [selectableObjectTypes, selectedTypeId],
   );
 
   const selectedRecord = useMemo(
@@ -257,6 +371,9 @@ export function ObjectsPage() {
   const selectedSystemCollection = getSystemCollectionForObjectType(
     selectedType?.id ?? null,
   );
+  const requestedTypeId = searchParams.get("typeId");
+  const requestedRecordId = searchParams.get("recordId");
+  const requestedViewMode = searchParams.get("view");
 
   const getRecordsForType = (typeId: string): ObjectRecord[] => {
     const targetType = objectTypes.find((item) => item.id === typeId);
@@ -278,9 +395,25 @@ export function ObjectsPage() {
         ? peopleState.ids
             .map((id) => peopleState.entities[id])
             .filter((entity): entity is Person => Boolean(entity))
-        : companiesState.ids
-            .map((id) => companiesState.entities[id])
-            .filter((entity): entity is Company => Boolean(entity));
+        : systemCollection === "companies"
+          ? companiesState.ids
+              .map((id) => companiesState.entities[id])
+              .filter((entity): entity is Company => Boolean(entity))
+          : systemCollection === "projects"
+            ? projectsState.ids
+                .map((id) => projectsState.entities[id])
+                .filter((entity): entity is Project => Boolean(entity))
+            : systemCollection === "notes"
+              ? notesState.ids
+                  .map((id) => notesState.entities[id])
+                  .filter((entity): entity is Note => Boolean(entity))
+              : systemCollection === "tasks"
+                ? tasksState.ids
+                    .map((id) => tasksState.entities[id])
+                    .filter((entity): entity is Task => Boolean(entity))
+                : meetingsState.ids
+                    .map((id) => meetingsState.entities[id])
+                    .filter((entity): entity is Meeting => Boolean(entity));
 
     return entities
       .map((entity) => {
@@ -289,7 +422,9 @@ export function ObjectsPage() {
           targetType.properties.map((property) => {
             const mappedKey = mappedSystemFieldKey(targetType, property);
             const mappedValue = mappedKey
-              ? (entity[mappedKey as keyof (Person | Company)] as unknown)
+              ? ((entity as unknown as Record<string, unknown>)[
+                  mappedKey
+                ] as unknown)
               : undefined;
 
             const value =
@@ -321,7 +456,31 @@ export function ObjectsPage() {
     if (companiesState.status === "idle") {
       void dispatch(dataThunks.companies.fetchAll());
     }
-  }, [companiesState.status, dispatch, peopleState.status]);
+
+    if (projectsState.status === "idle") {
+      void dispatch(dataThunks.projects.fetchAll());
+    }
+
+    if (notesState.status === "idle") {
+      void dispatch(dataThunks.notes.fetchAll());
+    }
+
+    if (tasksState.status === "idle") {
+      void dispatch(dataThunks.tasks.fetchAll());
+    }
+
+    if (meetingsState.status === "idle") {
+      void dispatch(dataThunks.meetings.fetchAll());
+    }
+  }, [
+    companiesState.status,
+    dispatch,
+    meetingsState.status,
+    notesState.status,
+    peopleState.status,
+    projectsState.status,
+    tasksState.status,
+  ]);
 
   useEffect(() => {
     if (!selectedTypeId || !selectedType) {
@@ -340,11 +499,77 @@ export function ObjectsPage() {
   }, [
     companiesState.entities,
     companiesState.ids,
+    meetingsState.entities,
+    meetingsState.ids,
+    notesState.entities,
+    notesState.ids,
     peopleState.entities,
     peopleState.ids,
+    projectsState.entities,
+    projectsState.ids,
     selectedRecordId,
     selectedType,
     selectedTypeId,
+    tasksState.entities,
+    tasksState.ids,
+  ]);
+
+  useEffect(() => {
+    if (!requestedTypeId) {
+      return;
+    }
+
+    if (!selectableObjectTypes.some((item) => item.id === requestedTypeId)) {
+      return;
+    }
+
+    if (selectedTypeId !== requestedTypeId) {
+      setSelectedTypeId(requestedTypeId);
+      return;
+    }
+
+    if (
+      requestedViewMode === "table" ||
+      requestedViewMode === "list" ||
+      requestedViewMode === "cards" ||
+      requestedViewMode === "detail"
+    ) {
+      setViewMode(requestedViewMode);
+    }
+  }, [
+    requestedTypeId,
+    requestedViewMode,
+    selectableObjectTypes,
+    selectedTypeId,
+  ]);
+
+  useEffect(() => {
+    if (!requestedTypeId || !requestedRecordId) {
+      return;
+    }
+
+    if (selectedTypeId !== requestedTypeId) {
+      return;
+    }
+
+    if (!records.some((record) => record.id === requestedRecordId)) {
+      return;
+    }
+
+    if (selectedRecordId !== requestedRecordId) {
+      setSelectedRecordId(requestedRecordId);
+    }
+
+    if (viewMode !== "detail") {
+      setViewMode("detail");
+    }
+  }, [
+    records,
+    requestedRecordId,
+    requestedTypeId,
+    selectedRecordId,
+    selectedTypeId,
+    viewMode,
   ]);
 
   useEffect(() => {
@@ -451,59 +676,10 @@ export function ObjectsPage() {
       return;
     }
 
-    if (selectedSystemCollection === "people") {
-      void dispatch(
-        dataThunks.people.createOne({
-          firstName: "New",
-          lastName: "Person",
-          photoUrl: "",
-          tags: [],
-          email: "",
-          phone: "",
-          address: "",
-          companyIds: [],
-          projectIds: [],
-          noteIds: [],
-          taskIds: [],
-          meetingIds: [],
-        }),
-      )
-        .unwrap()
-        .then((created) => {
-          setSelectedRecordId(created.id);
-          setViewMode("detail");
-        });
-      return;
-    }
-
-    if (selectedSystemCollection === "companies") {
-      void dispatch(
-        dataThunks.companies.createOne({
-          name: "New Company",
-          photoUrl: "",
-          tags: [],
-          email: "",
-          phone: "",
-          address: "",
-          website: "",
-          personIds: [],
-          projectIds: [],
-          noteIds: [],
-          taskIds: [],
-          meetingIds: [],
-        }),
-      )
-        .unwrap()
-        .then((created) => {
-          setSelectedRecordId(created.id);
-          setViewMode("detail");
-        });
-      return;
-    }
-
-    const created = createObjectRecord(selectedType);
-    setSelectedRecordId(created.id);
-    setViewMode("detail");
+    void createRecordForType(selectedType).then((createdId) => {
+      setSelectedRecordId(createdId);
+      setViewMode("detail");
+    });
   };
 
   const setPreferredViewMode = (nextMode: ObjectsViewMode) => {
@@ -566,37 +742,92 @@ export function ObjectsPage() {
       return;
     }
 
+    const existingRecord = records.find(
+      (record) => record.id === objectRecordId,
+    );
+    const previousValue = existingRecord?.values[property.id];
+
     const nextStringValue =
       typeof value === "string" ? value : String(value ?? "");
     const mappedField = mappedSystemFieldKey(selectedType, property);
 
-    if (selectedSystemCollection === "people" && mappedField) {
-      void dispatch(
-        dataThunks.people.updateOne({
-          id: objectRecordId,
-          input: {
-            [mappedField]: nextStringValue,
-          } as Partial<Person>,
-        }),
-      );
-      return;
-    }
+    if (selectedSystemCollection && mappedField) {
+      if (selectedSystemCollection === "people") {
+        void dispatch(
+          dataThunks.people.updateOne({
+            id: objectRecordId,
+            input: {
+              [mappedField]: nextStringValue,
+            } as Partial<Person>,
+          }),
+        );
+        return;
+      }
 
-    if (selectedSystemCollection === "companies" && mappedField) {
-      void dispatch(
-        dataThunks.companies.updateOne({
-          id: objectRecordId,
-          input: {
-            [mappedField]: nextStringValue,
-          } as Partial<Company>,
-        }),
-      );
-      return;
+      if (selectedSystemCollection === "companies") {
+        void dispatch(
+          dataThunks.companies.updateOne({
+            id: objectRecordId,
+            input: {
+              [mappedField]: nextStringValue,
+            } as Partial<Company>,
+          }),
+        );
+        return;
+      }
+
+      if (selectedSystemCollection === "projects") {
+        void dispatch(
+          dataThunks.projects.updateOne({
+            id: objectRecordId,
+            input: {
+              [mappedField]: nextStringValue,
+            } as Partial<Project>,
+          }),
+        );
+        return;
+      }
+
+      if (selectedSystemCollection === "notes") {
+        void dispatch(
+          dataThunks.notes.updateOne({
+            id: objectRecordId,
+            input: {
+              [mappedField]: nextStringValue,
+            } as Partial<Note>,
+          }),
+        );
+        return;
+      }
+
+      if (selectedSystemCollection === "tasks") {
+        void dispatch(
+          dataThunks.tasks.updateOne({
+            id: objectRecordId,
+            input: {
+              [mappedField]: nextStringValue,
+            } as Partial<Task>,
+          }),
+        );
+        return;
+      }
+
+      if (selectedSystemCollection === "meetings") {
+        void dispatch(
+          dataThunks.meetings.updateOne({
+            id: objectRecordId,
+            input: {
+              [mappedField]: nextStringValue,
+            } as Partial<Meeting>,
+          }),
+        );
+        return;
+      }
     }
 
     if (selectedSystemCollection) {
       const upserted = upsertObjectRecord(selectedType, objectRecordId, {
-        [property.id]: nextStringValue,
+        [property.id]: value,
       });
 
       setRecords((previous) =>
@@ -613,6 +844,13 @@ export function ObjectsPage() {
             : record,
         ),
       );
+
+      syncBidirectionalConnection({
+        sourceRecordId: objectRecordId,
+        property,
+        previousValue,
+        nextValue: upserted.values[property.id],
+      });
       return;
     }
 
@@ -627,6 +865,13 @@ export function ObjectsPage() {
     setRecords((previous) =>
       previous.map((record) => (record.id === updated.id ? updated : record)),
     );
+
+    syncBidirectionalConnection({
+      sourceRecordId: objectRecordId,
+      property,
+      previousValue,
+      nextValue: updated.values[property.id],
+    });
   };
 
   useEffect(() => {
@@ -735,6 +980,443 @@ export function ObjectsPage() {
       });
   };
 
+  const createRecordForType = async (targetType: ObjectTypeDefinition) => {
+    const targetSystemCollection = getSystemCollectionForObjectType(
+      targetType.id,
+    );
+
+    if (targetSystemCollection === "people") {
+      const created = await dispatch(
+        dataThunks.people.createOne({
+          firstName: "New",
+          lastName: "Person",
+          photoUrl: "",
+          tags: [],
+          email: "",
+          phone: "",
+          address: "",
+          companyIds: [],
+          projectIds: [],
+          noteIds: [],
+          taskIds: [],
+          meetingIds: [],
+        }),
+      ).unwrap();
+
+      return created.id;
+    }
+
+    if (targetSystemCollection === "companies") {
+      const created = await dispatch(
+        dataThunks.companies.createOne({
+          name: "New Company",
+          photoUrl: "",
+          tags: [],
+          email: "",
+          phone: "",
+          address: "",
+          website: "",
+          personIds: [],
+          projectIds: [],
+          noteIds: [],
+          taskIds: [],
+          meetingIds: [],
+        }),
+      ).unwrap();
+
+      return created.id;
+    }
+
+    if (targetSystemCollection === "projects") {
+      const created = await dispatch(
+        dataThunks.projects.createOne({
+          name: "New Project",
+          paraType: "project",
+          description: "",
+          tags: [],
+          personIds: [],
+          companyIds: [],
+          noteIds: [],
+          taskIds: [],
+          meetingIds: [],
+        }),
+      ).unwrap();
+
+      return created.id;
+    }
+
+    if (targetSystemCollection === "notes") {
+      const created = await dispatch(
+        dataThunks.notes.createOne({
+          title: "New Note",
+          body: "<p></p>",
+          tags: [],
+          relatedNoteIds: [],
+          personIds: [],
+          companyIds: [],
+          projectIds: [],
+          taskIds: [],
+          meetingIds: [],
+        }),
+      ).unwrap();
+
+      return created.id;
+    }
+
+    if (targetSystemCollection === "tasks") {
+      const created = await dispatch(
+        dataThunks.tasks.createOne({
+          title: "New Task",
+          description: "",
+          notes: "",
+          tags: [],
+          status: "inbox",
+          level: "task",
+          parentTaskId: null,
+          dueDate: undefined,
+          personIds: [],
+          companyIds: [],
+          projectIds: [],
+          noteIds: [],
+          meetingIds: [],
+        }),
+      ).unwrap();
+
+      return created.id;
+    }
+
+    if (targetSystemCollection === "meetings") {
+      const created = await dispatch(
+        dataThunks.meetings.createOne({
+          title: "New Meeting",
+          tags: [],
+          scheduledFor: new Date().toISOString(),
+          location: "",
+          personIds: [],
+          companyIds: [],
+          projectIds: [],
+          noteIds: [],
+          taskIds: [],
+        }),
+      ).unwrap();
+
+      return created.id;
+    }
+
+    const created = createObjectRecord(targetType);
+    return created.id;
+  };
+
+  const navigateToConnectedRecord = (
+    targetTypeId: string,
+    targetRecordId: string,
+  ) => {
+    const targetSystemCollection =
+      getSystemCollectionForObjectType(targetTypeId);
+
+    if (targetSystemCollection === "notes") {
+      dispatch(
+        notesTabsActions.openNoteTab({ id: targetRecordId, activate: true }),
+      );
+      dispatch(dataActions.notes.setSelectedId(targetRecordId));
+      navigate("/notes");
+      return;
+    }
+
+    if (targetSystemCollection === "tasks") {
+      dispatch(dataActions.tasks.setSelectedId(targetRecordId));
+      dispatch(tasksViewActions.setExpandedTaskId(targetRecordId));
+      navigate("/tasks");
+      return;
+    }
+
+    if (targetSystemCollection === "projects") {
+      dispatch(dataActions.projects.setSelectedId(targetRecordId));
+      navigate("/projects");
+      return;
+    }
+
+    if (targetSystemCollection === "people") {
+      dispatch(dataActions.people.setSelectedId(targetRecordId));
+      navigate("/people");
+      return;
+    }
+
+    if (targetSystemCollection === "companies") {
+      dispatch(dataActions.companies.setSelectedId(targetRecordId));
+      navigate("/companies");
+      return;
+    }
+
+    if (targetSystemCollection === "meetings") {
+      dispatch(dataActions.meetings.setSelectedId(targetRecordId));
+      navigate("/meetings");
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("typeId", targetTypeId);
+    params.set("recordId", targetRecordId);
+    params.set("view", "detail");
+    navigate(`/objects?${params.toString()}`);
+  };
+
+  const resolveConnectionTarget = (params: {
+    connectionId: string;
+    hintedTypeId?: string;
+  }): {
+    targetTypeId: string;
+    targetType: ObjectTypeDefinition;
+    targetRecord: ObjectRecord;
+  } | null => {
+    const tryResolveInType = (
+      targetTypeId: string,
+    ): {
+      targetTypeId: string;
+      targetType: ObjectTypeDefinition;
+      targetRecord: ObjectRecord;
+    } | null => {
+      const targetType = objectTypes.find((item) => item.id === targetTypeId);
+      if (!targetType) {
+        return null;
+      }
+
+      const targetRecord = getRecordsForType(targetTypeId).find(
+        (entry) => entry.id === params.connectionId,
+      );
+
+      if (!targetRecord) {
+        return null;
+      }
+
+      return {
+        targetTypeId,
+        targetType,
+        targetRecord,
+      };
+    };
+
+    if (params.hintedTypeId) {
+      const hintedMatch = tryResolveInType(params.hintedTypeId);
+      if (hintedMatch) {
+        return hintedMatch;
+      }
+    }
+
+    for (const objectType of objectTypes) {
+      if (objectType.id === params.hintedTypeId) {
+        continue;
+      }
+
+      const match = tryResolveInType(objectType.id);
+      if (match) {
+        return match;
+      }
+    }
+
+    const rawRecord = listObjectRecords().find(
+      (entry) => entry.id === params.connectionId,
+    );
+    if (rawRecord) {
+      const rawType = objectTypes.find(
+        (item) => item.id === rawRecord.objectTypeId,
+      );
+
+      if (rawType) {
+        return {
+          targetTypeId: rawType.id,
+          targetType: rawType,
+          targetRecord: rawRecord,
+        };
+      }
+    }
+
+    return null;
+  };
+
+  const resolveFallbackConnectionLabel = (
+    connectionId: string,
+  ): string | null => {
+    const rawRecord = listObjectRecords().find(
+      (entry) => entry.id === connectionId,
+    );
+    if (!rawRecord) {
+      return null;
+    }
+
+    const rawType = objectTypes.find(
+      (item) => item.id === rawRecord.objectTypeId,
+    );
+    if (rawType) {
+      return getRecordTitle(rawRecord, rawType);
+    }
+
+    const firstValue = Object.values(rawRecord.values).find((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+
+      if (typeof value === "number") {
+        return true;
+      }
+
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+
+      return false;
+    });
+
+    if (Array.isArray(firstValue)) {
+      return firstValue.join(", ");
+    }
+
+    if (typeof firstValue === "number") {
+      return String(firstValue);
+    }
+
+    if (typeof firstValue === "string") {
+      const trimmed = firstValue.trim();
+      return trimmed || null;
+    }
+
+    return null;
+  };
+
+  const renderReadonlyPropertyValue = (
+    record: ObjectRecord,
+    property: ObjectTypeProperty,
+  ) => {
+    if (property.type !== "connection") {
+      return formatRecordValue(record.values[property.id]) || "—";
+    }
+
+    const targetTypeId = property.connectionTypeId;
+    const connectionIds = connectionIdsFromValue(record.values[property.id]);
+
+    if (connectionIds.length === 0) {
+      return "—";
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {connectionIds.map((connectionId) => {
+          const resolvedTarget = resolveConnectionTarget({
+            connectionId,
+            hintedTypeId: targetTypeId,
+          });
+          const fallbackLabel = resolvedTarget
+            ? null
+            : resolveFallbackConnectionLabel(connectionId);
+          const label = resolvedTarget
+            ? getRecordTitle(
+                resolvedTarget.targetRecord,
+                resolvedTarget.targetType,
+              )
+            : (fallbackLabel ?? connectionId);
+
+          return (
+            <button
+              key={connectionId}
+              type="button"
+              className="bg-muted hover:bg-muted/80 rounded px-1.5 py-0.5 text-left text-xs"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!resolvedTarget && !targetTypeId) {
+                  return;
+                }
+
+                const destinationTypeId =
+                  resolvedTarget?.targetTypeId ?? targetTypeId;
+
+                if (!destinationTypeId) {
+                  return;
+                }
+
+                navigateToConnectedRecord(destinationTypeId, connectionId);
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const syncBidirectionalConnection = (params: {
+    sourceRecordId: string;
+    property: ObjectTypeProperty;
+    previousValue: ObjectRecordValue | undefined;
+    nextValue: ObjectRecordValue | undefined;
+  }) => {
+    const { sourceRecordId, property, previousValue, nextValue } = params;
+
+    if (
+      !selectedType ||
+      property.type !== "connection" ||
+      !property.connectionIsBidirectional ||
+      !property.connectionTypeId ||
+      !property.connectionReciprocalPropertyId
+    ) {
+      return;
+    }
+
+    const targetType = objectTypes.find(
+      (item) => item.id === property.connectionTypeId,
+    );
+    if (!targetType) {
+      return;
+    }
+
+    const reciprocalProperty = targetType.properties.find(
+      (item) =>
+        item.id === property.connectionReciprocalPropertyId &&
+        item.type === "connection",
+    );
+    if (!reciprocalProperty) {
+      return;
+    }
+
+    const previousIds = connectionIdsFromValue(previousValue);
+    const nextIds = connectionIdsFromValue(nextValue);
+
+    const addedIds = nextIds.filter((id) => !previousIds.includes(id));
+    const removedIds = previousIds.filter((id) => !nextIds.includes(id));
+
+    const recordsById = new Map(
+      getRecordsForType(targetType.id).map((record) => [record.id, record]),
+    );
+
+    const updateTargetReciprocal = (
+      targetId: string,
+      shouldInclude: boolean,
+    ) => {
+      const targetRecord = recordsById.get(targetId);
+      if (!targetRecord) {
+        return;
+      }
+
+      const currentIds = connectionIdsFromValue(
+        targetRecord.values[reciprocalProperty.id],
+      );
+
+      const nextTargetIds = shouldInclude
+        ? Array.from(new Set([...currentIds, sourceRecordId]))
+        : currentIds.filter((id) => id !== sourceRecordId);
+
+      const nextTargetValue: ObjectRecordValue =
+        reciprocalProperty.connectionMultiplicity === "multiple"
+          ? nextTargetIds
+          : (nextTargetIds[0] ?? "");
+
+      handleUpdateField(targetId, reciprocalProperty, nextTargetValue);
+    };
+
+    addedIds.forEach((targetId) => updateTargetReciprocal(targetId, true));
+    removedIds.forEach((targetId) => updateTargetReciprocal(targetId, false));
+  };
+
   const renderFieldInput = (property: ObjectTypeProperty) => {
     if (!selectedRecord || !selectedType) {
       return null;
@@ -775,31 +1457,177 @@ export function ObjectsPage() {
       const connectionRecords = targetTypeId
         ? getRecordsForType(targetTypeId)
         : [];
+      const connectionRecordsById = new Map(
+        connectionRecords.map((record) => [record.id, record]),
+      );
+      const selectedConnectionIds = connectionIdsFromValue(value);
+
+      const canCreateConnectedRecord = Boolean(targetType);
+
+      const createLinkedRecord = () => {
+        if (!targetType) {
+          return;
+        }
+
+        void createRecordForType(targetType).then((createdId) => {
+          const nextIds =
+            property.connectionMultiplicity === "multiple"
+              ? Array.from(new Set([...selectedConnectionIds, createdId]))
+              : [createdId];
+
+          const nextValue: ObjectRecordValue =
+            property.connectionMultiplicity === "multiple"
+              ? nextIds
+              : (nextIds[0] ?? "");
+
+          setFieldDraftValues((previous) => ({
+            ...previous,
+            [property.id]:
+              property.connectionMultiplicity === "multiple"
+                ? nextIds.join(",")
+                : (nextIds[0] ?? ""),
+          }));
+          handleUpdateField(objectRecordId, property, nextValue);
+        });
+      };
+
+      const selectedConnectionLinks =
+        targetTypeId && selectedConnectionIds.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {selectedConnectionIds.map((connectionId) => {
+              const targetRecord = connectionRecordsById.get(connectionId);
+              const resolvedTarget =
+                targetType && targetRecord
+                  ? {
+                      targetTypeId,
+                      targetType,
+                      targetRecord,
+                    }
+                  : resolveConnectionTarget({
+                      connectionId,
+                      hintedTypeId: targetTypeId,
+                    });
+              const fallbackLabel = resolvedTarget
+                ? null
+                : resolveFallbackConnectionLabel(connectionId);
+              const label = resolvedTarget
+                ? getRecordTitle(
+                    resolvedTarget.targetRecord,
+                    resolvedTarget.targetType,
+                  )
+                : (fallbackLabel ?? connectionId);
+
+              return (
+                <button
+                  key={connectionId}
+                  type="button"
+                  className="bg-muted hover:bg-muted/80 rounded px-1.5 py-0.5 text-left text-xs"
+                  onClick={() => {
+                    if (!resolvedTarget && !targetTypeId) {
+                      return;
+                    }
+
+                    const destinationTypeId =
+                      resolvedTarget?.targetTypeId ?? targetTypeId;
+
+                    if (!destinationTypeId) {
+                      return;
+                    }
+
+                    navigateToConnectedRecord(destinationTypeId, connectionId);
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null;
+
+      if (property.connectionMultiplicity === "multiple") {
+        return (
+          <div className="space-y-2">
+            <select
+              multiple
+              value={selectedConnectionIds}
+              onChange={(event) => {
+                const nextIds = Array.from(event.target.selectedOptions).map(
+                  (option) => option.value,
+                );
+
+                setFieldDraftValues((previous) => ({
+                  ...previous,
+                  [property.id]: nextIds.join(","),
+                }));
+
+                handleUpdateField(objectRecordId, property, nextIds);
+              }}
+              className="border-input bg-background min-h-28 w-full rounded-md border px-2 py-2 text-sm"
+            >
+              {connectionRecords.map((record) => (
+                <option key={record.id} value={record.id}>
+                  {targetType ? getRecordTitle(record, targetType) : record.id}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!canCreateConnectedRecord}
+                onClick={createLinkedRecord}
+              >
+                <Plus className="size-4" />
+                New linked record
+              </Button>
+            </div>
+
+            {selectedConnectionLinks}
+          </div>
+        );
+      }
 
       return (
-        <select
-          value={draftValue}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            setFieldDraftValues((previous) => ({
-              ...previous,
-              [property.id]: nextValue,
-            }));
-            commitFieldDraft(objectRecordId, property, nextValue);
-          }}
-          className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-        >
-          <option value="">
-            {targetType
-              ? `Select ${targetType.name} record`
-              : "Select target object type first"}
-          </option>
-          {connectionRecords.map((record) => (
-            <option key={record.id} value={record.id}>
-              {targetType ? getRecordTitle(record, targetType) : record.id}
+        <div className="space-y-2">
+          <select
+            value={draftValue}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setFieldDraftValues((previous) => ({
+                ...previous,
+                [property.id]: nextValue,
+              }));
+              commitFieldDraft(objectRecordId, property, nextValue);
+            }}
+            className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+          >
+            <option value="">
+              {targetType
+                ? `Select ${targetType.name} record`
+                : "Select target object type first"}
             </option>
-          ))}
-        </select>
+            {connectionRecords.map((record) => (
+              <option key={record.id} value={record.id}>
+                {targetType ? getRecordTitle(record, targetType) : record.id}
+              </option>
+            ))}
+          </select>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canCreateConnectedRecord}
+            onClick={createLinkedRecord}
+          >
+            <Plus className="size-4" />
+            New linked record
+          </Button>
+
+          {selectedConnectionLinks}
+        </div>
       );
     }
 
@@ -999,8 +1827,12 @@ export function ObjectsPage() {
                   );
                 }}
                 className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+                disabled={selectableObjectTypes.length === 0}
               >
-                {objectTypes.map((objectType) => (
+                {selectableObjectTypes.length === 0 ? (
+                  <option value="">No custom object types</option>
+                ) : null}
+                {selectableObjectTypes.map((objectType) => (
                   <option key={objectType.id} value={objectType.id}>
                     {objectType.name}
                   </option>
@@ -1124,8 +1956,7 @@ export function ObjectsPage() {
                           </td>
                           {selectedType.properties.map((property) => (
                             <td key={property.id} className="px-3 py-2 text-xs">
-                              {formatRecordValue(record.values[property.id]) ||
-                                "—"}
+                              {renderReadonlyPropertyValue(record, property)}
                             </td>
                           ))}
                         </tr>
@@ -1136,42 +1967,60 @@ export function ObjectsPage() {
               ) : viewMode === "list" ? (
                 <div className="space-y-2">
                   {records.map((record) => (
-                    <button
+                    <div
                       key={record.id}
-                      type="button"
-                      className="hover:bg-muted/30 w-full rounded-md border p-3 text-left"
+                      className="hover:bg-muted/30 w-full cursor-pointer rounded-md border p-3 text-left"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setSelectedRecordId(record.id);
                         setViewMode("detail");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedRecordId(record.id);
+                          setViewMode("detail");
+                        }
                       }}
                     >
                       <p className="font-medium">
                         {getRecordTitle(record, selectedType)}
                       </p>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        {selectedType.properties
-                          .slice(0, 3)
-                          .map((property) => {
-                            const value = formatRecordValue(
-                              record.values[property.id],
-                            );
-                            return `${property.name}: ${value || "—"}`;
-                          })
-                          .join(" • ")}
-                      </p>
-                    </button>
+                      <div className="text-muted-foreground mt-2 space-y-1 text-xs">
+                        {selectedType.properties.slice(0, 3).map((property) => (
+                          <div
+                            key={property.id}
+                            className="flex flex-wrap items-center gap-1"
+                          >
+                            <span className="font-medium">
+                              {property.name}:
+                            </span>
+                            {renderReadonlyPropertyValue(record, property)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : viewMode === "cards" ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {records.map((record) => (
-                    <button
+                    <div
                       key={record.id}
-                      type="button"
-                      className="hover:bg-muted/20 rounded-md border p-3 text-left"
+                      className="hover:bg-muted/20 cursor-pointer rounded-md border p-3 text-left"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setSelectedRecordId(record.id);
                         setViewMode("detail");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedRecordId(record.id);
+                          setViewMode("detail");
+                        }
                       }}
                     >
                       {(() => {
@@ -1209,17 +2058,18 @@ export function ObjectsPage() {
                       </p>
                       <div className="space-y-1 text-xs">
                         {selectedType.properties.slice(0, 4).map((property) => (
-                          <p
+                          <div
                             key={property.id}
-                            className="text-muted-foreground truncate"
+                            className="text-muted-foreground flex flex-wrap items-center gap-1"
                           >
-                            {property.name}:{" "}
-                            {formatRecordValue(record.values[property.id]) ||
-                              "—"}
-                          </p>
+                            <span className="font-medium">
+                              {property.name}:
+                            </span>
+                            {renderReadonlyPropertyValue(record, property)}
+                          </div>
                         ))}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               ) : !selectedRecord ? (

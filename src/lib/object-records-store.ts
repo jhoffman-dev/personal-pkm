@@ -6,7 +6,7 @@ import {
 
 const OBJECT_RECORDS_STORAGE_KEY = "pkm.object-records.v1";
 
-export type ObjectRecordValue = string | number;
+export type ObjectRecordValue = string | number | string[];
 
 export type ObjectRecord = {
   id: string;
@@ -46,6 +46,15 @@ function normalizeObjectRecord(value: unknown): ObjectRecord | null {
       typeof propertyValue === "number"
     ) {
       values[propertyId] = propertyValue;
+      return;
+    }
+
+    if (Array.isArray(propertyValue)) {
+      const next = propertyValue.filter(
+        (entry): entry is string => typeof entry === "string",
+      );
+
+      values[propertyId] = Array.from(new Set(next));
     }
   });
 
@@ -102,6 +111,39 @@ function normalizeValueForProperty(
   property: ObjectTypeProperty,
   value: unknown,
 ): ObjectRecordValue {
+  if (property.type === "connection") {
+    if (property.connectionMultiplicity === "multiple") {
+      if (Array.isArray(value)) {
+        return Array.from(
+          new Set(
+            value
+              .filter((entry): entry is string => typeof entry === "string")
+              .map((entry) => entry.trim())
+              .filter(Boolean),
+          ),
+        );
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed ? [trimmed] : [];
+      }
+
+      return [];
+    }
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      const first = value.find((entry) => typeof entry === "string");
+      return first ?? "";
+    }
+
+    return "";
+  }
+
   if (property.type === "number") {
     if (typeof value === "number" && Number.isFinite(value)) {
       return value;
@@ -146,6 +188,10 @@ function defaultValueForProperty(
     return property.options?.[0] ?? "";
   }
 
+  if (property.type === "connection") {
+    return property.connectionMultiplicity === "multiple" ? [] : "";
+  }
+
   return "";
 }
 
@@ -153,6 +199,12 @@ export function listObjectRecordsByType(objectTypeId: string): ObjectRecord[] {
   return loadState()
     .filter((record) => record.objectTypeId === objectTypeId)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export function listObjectRecords(): ObjectRecord[] {
+  return loadState().sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
 }
 
 export function createObjectRecord(

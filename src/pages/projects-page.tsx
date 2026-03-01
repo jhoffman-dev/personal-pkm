@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SystemCustomPropertiesPanel } from "@/components/system-custom-properties-panel";
 import {
   PropertyLinkPicker,
   type PropertyOption,
@@ -22,7 +23,7 @@ import {
   useAppSelector,
 } from "@/store";
 import { Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function DashboardListCard({
   title,
@@ -84,6 +85,7 @@ export function ProjectsPage() {
   const [draftMeetingIds, setDraftMeetingIds] = useState<string[]>([]);
   const [draftPersonIds, setDraftPersonIds] = useState<string[]>([]);
   const [draftCompanyIds, setDraftCompanyIds] = useState<string[]>([]);
+  const hydratedProjectIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (projectsState.status === "idle") {
@@ -150,7 +152,12 @@ export function ProjectsPage() {
     : null;
 
   useEffect(() => {
+    if (selectedProject?.id === hydratedProjectIdRef.current) {
+      return;
+    }
+
     if (!selectedProject) {
+      hydratedProjectIdRef.current = null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftName("");
       setDraftDescription("");
@@ -164,6 +171,8 @@ export function ProjectsPage() {
       return;
     }
 
+    hydratedProjectIdRef.current = selectedProject.id;
+
     setDraftName(selectedProject.name);
     setDraftDescription(selectedProject.description ?? "");
     setDraftTags(selectedProject.tags ?? []);
@@ -173,7 +182,7 @@ export function ProjectsPage() {
     setDraftMeetingIds(selectedProject.meetingIds ?? []);
     setDraftPersonIds(selectedProject.personIds ?? []);
     setDraftCompanyIds(selectedProject.companyIds ?? []);
-  }, [selectedProject]);
+  }, [selectedProject, selectedProject?.id]);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -770,6 +779,11 @@ export function ProjectsPage() {
                     )
                   }
                   onCreateOption={createQuickCompany}
+                />
+
+                <SystemCustomPropertiesPanel
+                  objectTypeId="object_type_projects"
+                  recordId={selectedProject?.id ?? null}
                 />
               </>
             )}

@@ -21,6 +21,9 @@ export type ObjectTypeProperty = {
   autoSetCurrentDateOnCreate?: boolean;
   options?: string[];
   connectionTypeId?: string;
+  connectionMultiplicity?: "single" | "multiple";
+  connectionIsBidirectional?: boolean;
+  connectionReciprocalPropertyId?: string;
 };
 
 export type ObjectTypeDefinition = {
@@ -100,6 +103,58 @@ const SYSTEM_OBJECT_TYPES: ObjectTypeDefinition[] = [
       },
     ],
   },
+  {
+    id: "object_type_projects",
+    name: "Projects",
+    isSystem: true,
+    properties: [
+      {
+        id: "property_project_name",
+        name: "Project Name",
+        type: "text",
+        isRequired: true,
+      },
+    ],
+  },
+  {
+    id: "object_type_notes",
+    name: "Notes",
+    isSystem: true,
+    properties: [
+      {
+        id: "property_note_title",
+        name: "Title",
+        type: "text",
+        isRequired: true,
+      },
+    ],
+  },
+  {
+    id: "object_type_tasks",
+    name: "Tasks",
+    isSystem: true,
+    properties: [
+      {
+        id: "property_task_title",
+        name: "Task Title",
+        type: "text",
+        isRequired: true,
+      },
+    ],
+  },
+  {
+    id: "object_type_meetings",
+    name: "Meetings",
+    isSystem: true,
+    properties: [
+      {
+        id: "property_meeting_title",
+        name: "Meeting Title",
+        type: "text",
+        isRequired: true,
+      },
+    ],
+  },
 ];
 
 function normalizeProperty(value: unknown): ObjectTypeProperty | null {
@@ -133,6 +188,33 @@ function normalizeProperty(value: unknown): ObjectTypeProperty | null {
       )
     : undefined;
 
+  const legacyConnectionTypeId =
+    typeof record.relationTypeId === "string"
+      ? record.relationTypeId
+      : typeof record.targetObjectTypeId === "string"
+        ? record.targetObjectTypeId
+        : undefined;
+  const legacyConnectionMultiplicity =
+    record.relationMultiplicity === "multiple"
+      ? "multiple"
+      : typeof record.allowMultiple === "boolean"
+        ? record.allowMultiple
+          ? "multiple"
+          : "single"
+        : undefined;
+  const legacyConnectionIsBidirectional =
+    typeof record.relationIsBidirectional === "boolean"
+      ? record.relationIsBidirectional
+      : typeof record.isBidirectional === "boolean"
+        ? record.isBidirectional
+        : undefined;
+  const legacyConnectionReciprocalPropertyId =
+    typeof record.relationReciprocalPropertyId === "string"
+      ? record.relationReciprocalPropertyId
+      : typeof record.reciprocalConnectionPropertyId === "string"
+        ? record.reciprocalConnectionPropertyId
+        : undefined;
+
   return {
     id,
     name,
@@ -149,8 +231,30 @@ function normalizeProperty(value: unknown): ObjectTypeProperty | null {
           )
         : undefined,
     connectionTypeId:
-      type === "connection" && typeof record.connectionTypeId === "string"
-        ? record.connectionTypeId
+      type === "connection"
+        ? typeof record.connectionTypeId === "string"
+          ? record.connectionTypeId
+          : legacyConnectionTypeId
+        : undefined,
+    connectionMultiplicity:
+      type === "connection"
+        ? record.connectionMultiplicity === "multiple"
+          ? "multiple"
+          : record.connectionMultiplicity === "single"
+            ? "single"
+            : (legacyConnectionMultiplicity ?? "single")
+        : undefined,
+    connectionIsBidirectional:
+      type === "connection"
+        ? typeof record.connectionIsBidirectional === "boolean"
+          ? record.connectionIsBidirectional
+          : (legacyConnectionIsBidirectional ?? false)
+        : undefined,
+    connectionReciprocalPropertyId:
+      type === "connection"
+        ? typeof record.connectionReciprocalPropertyId === "string"
+          ? record.connectionReciprocalPropertyId
+          : legacyConnectionReciprocalPropertyId
         : undefined,
   };
 }
@@ -323,6 +427,12 @@ export function addObjectTypeProperty(
     options: propertyType === "select" ? ["Option 1"] : undefined,
     connectionTypeId:
       propertyType === "connection" ? SYSTEM_OBJECT_TYPES[0]?.id : undefined,
+    connectionMultiplicity:
+      propertyType === "connection" ? "single" : undefined,
+    connectionIsBidirectional:
+      propertyType === "connection" ? false : undefined,
+    connectionReciprocalPropertyId:
+      propertyType === "connection" ? undefined : undefined,
   };
 
   const existing = objectTypes[index];
@@ -348,6 +458,9 @@ export function updateObjectTypeProperty(
       | "options"
       | "connectionTypeId"
       | "autoSetCurrentDateOnCreate"
+      | "connectionMultiplicity"
+      | "connectionIsBidirectional"
+      | "connectionReciprocalPropertyId"
     >
   >,
 ): ObjectTypeProperty | null {
@@ -392,6 +505,23 @@ export function updateObjectTypeProperty(
     connectionTypeId:
       existing.type === "connection"
         ? (input.connectionTypeId ?? existing.connectionTypeId)
+        : undefined,
+    connectionMultiplicity:
+      existing.type === "connection"
+        ? (input.connectionMultiplicity ??
+          existing.connectionMultiplicity ??
+          "single")
+        : undefined,
+    connectionIsBidirectional:
+      existing.type === "connection"
+        ? (input.connectionIsBidirectional ??
+          existing.connectionIsBidirectional ??
+          false)
+        : undefined,
+    connectionReciprocalPropertyId:
+      existing.type === "connection"
+        ? (input.connectionReciprocalPropertyId ??
+          existing.connectionReciprocalPropertyId)
         : undefined,
   };
 

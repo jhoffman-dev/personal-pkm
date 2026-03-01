@@ -396,33 +396,194 @@ export function ObjectTypesPage() {
                           ) : null}
 
                           {property.type === "connection" ? (
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium">
-                                Connects to object type
+                            <div className="space-y-3">
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium">
+                                  Connects to object type
+                                </label>
+                                <select
+                                  value={property.connectionTypeId ?? ""}
+                                  onChange={(event) => {
+                                    updateObjectTypeProperty(
+                                      selectedType.id,
+                                      property.id,
+                                      {
+                                        connectionTypeId: event.target.value,
+                                        connectionReciprocalPropertyId:
+                                          undefined,
+                                      },
+                                    );
+                                    refreshObjectTypes();
+                                  }}
+                                  className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                                >
+                                  <option value="">Select object type</option>
+                                  {objectTypes
+                                    .filter(
+                                      (item) => item.id !== selectedType.id,
+                                    )
+                                    .map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium">
+                                  Connection mode
+                                </label>
+                                <select
+                                  value={
+                                    property.connectionMultiplicity ?? "single"
+                                  }
+                                  onChange={(event) => {
+                                    updateObjectTypeProperty(
+                                      selectedType.id,
+                                      property.id,
+                                      {
+                                        connectionMultiplicity:
+                                          event.target.value === "multiple"
+                                            ? "multiple"
+                                            : "single",
+                                      },
+                                    );
+                                    refreshObjectTypes();
+                                  }}
+                                  className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                                >
+                                  <option value="single">Single</option>
+                                  <option value="multiple">Multiple</option>
+                                </select>
+                              </div>
+
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    property.connectionIsBidirectional ?? false
+                                  }
+                                  onChange={(event) => {
+                                    updateObjectTypeProperty(
+                                      selectedType.id,
+                                      property.id,
+                                      {
+                                        connectionIsBidirectional:
+                                          event.target.checked,
+                                      },
+                                    );
+                                    refreshObjectTypes();
+                                  }}
+                                />
+                                Keep in sync both ways
                               </label>
-                              <select
-                                value={property.connectionTypeId ?? ""}
-                                onChange={(event) => {
-                                  updateObjectTypeProperty(
-                                    selectedType.id,
-                                    property.id,
-                                    {
-                                      connectionTypeId: event.target.value,
-                                    },
-                                  );
-                                  refreshObjectTypes();
-                                }}
-                                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
-                              >
-                                <option value="">Select object type</option>
-                                {objectTypes
-                                  .filter((item) => item.id !== selectedType.id)
-                                  .map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                    </option>
-                                  ))}
-                              </select>
+
+                              {property.connectionIsBidirectional &&
+                              property.connectionTypeId ? (
+                                <>
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium">
+                                      Reciprocal field on target type
+                                    </label>
+                                    <select
+                                      value={
+                                        property.connectionReciprocalPropertyId ??
+                                        ""
+                                      }
+                                      onChange={(event) => {
+                                        updateObjectTypeProperty(
+                                          selectedType.id,
+                                          property.id,
+                                          {
+                                            connectionReciprocalPropertyId:
+                                              event.target.value || undefined,
+                                          },
+                                        );
+                                        refreshObjectTypes();
+                                      }}
+                                      className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                                    >
+                                      <option value="">
+                                        Select reciprocal field
+                                      </option>
+                                      {(
+                                        objectTypes
+                                          .find(
+                                            (item) =>
+                                              item.id ===
+                                              property.connectionTypeId,
+                                          )
+                                          ?.properties.filter(
+                                            (candidate) =>
+                                              candidate.type === "connection" &&
+                                              candidate.connectionTypeId ===
+                                                selectedType.id,
+                                          ) ?? []
+                                      ).map((candidate) => (
+                                        <option
+                                          key={candidate.id}
+                                          value={candidate.id}
+                                        >
+                                          {candidate.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      const targetType = objectTypes.find(
+                                        (item) =>
+                                          item.id === property.connectionTypeId,
+                                      );
+
+                                      if (!targetType) {
+                                        return;
+                                      }
+
+                                      const reciprocal = addObjectTypeProperty(
+                                        targetType.id,
+                                        "connection",
+                                      );
+
+                                      if (!reciprocal) {
+                                        return;
+                                      }
+
+                                      updateObjectTypeProperty(
+                                        targetType.id,
+                                        reciprocal.id,
+                                        {
+                                          name: `${selectedType.name} Link`,
+                                          connectionTypeId: selectedType.id,
+                                          connectionMultiplicity:
+                                            property.connectionMultiplicity ??
+                                            "single",
+                                          connectionIsBidirectional: false,
+                                        },
+                                      );
+
+                                      updateObjectTypeProperty(
+                                        selectedType.id,
+                                        property.id,
+                                        {
+                                          connectionReciprocalPropertyId:
+                                            reciprocal.id,
+                                        },
+                                      );
+
+                                      refreshObjectTypes();
+                                    }}
+                                  >
+                                    <Plus className="size-4" />
+                                    Create reciprocal field
+                                  </Button>
+                                </>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>

@@ -42,6 +42,7 @@ export function CompaniesPage() {
   const [draftTaskIds, setDraftTaskIds] = useState<string[]>([]);
   const [draftMeetingIds, setDraftMeetingIds] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const hydratedCompanyIdRef = useRef<string | null>(null);
   const photoFileInputRef = useRef<HTMLInputElement | null>(null);
   const {
     createQuickCompany,
@@ -120,7 +121,12 @@ export function CompaniesPage() {
     : null;
 
   useEffect(() => {
+    if (selectedCompany?.id === hydratedCompanyIdRef.current) {
+      return;
+    }
+
     if (!selectedCompany) {
+      hydratedCompanyIdRef.current = null;
       setDraftName("");
       setDraftEmail("");
       setDraftPhone("");
@@ -136,6 +142,8 @@ export function CompaniesPage() {
       return;
     }
 
+    hydratedCompanyIdRef.current = selectedCompany.id;
+
     setDraftName(selectedCompany.name);
     setDraftEmail(selectedCompany.email ?? "");
     setDraftPhone(selectedCompany.phone ?? "");
@@ -148,7 +156,7 @@ export function CompaniesPage() {
     setDraftNoteIds(selectedCompany.noteIds ?? []);
     setDraftTaskIds(selectedCompany.taskIds ?? []);
     setDraftMeetingIds(selectedCompany.meetingIds ?? []);
-  }, [selectedCompany]);
+  }, [selectedCompany, selectedCompany?.id]);
 
   useEffect(() => {
     if (!selectedCompany) {

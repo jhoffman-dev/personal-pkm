@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SystemCustomPropertiesPanel } from "@/components/system-custom-properties-panel";
 import {
   PropertyLinkPicker,
   type PropertyOption,
@@ -1023,6 +1024,11 @@ export function TasksPage() {
                     searchPlaceholder="Search meetings..."
                   />
                 </div>
+
+                <SystemCustomPropertiesPanel
+                  objectTypeId="object_type_tasks"
+                  recordId={expandedTask?.id ?? null}
+                />
               </>
             )}
           </aside>

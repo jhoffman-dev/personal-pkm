@@ -48,6 +48,7 @@ export function PeoplePage() {
   const [draftTaskIds, setDraftTaskIds] = useState<string[]>([]);
   const [draftMeetingIds, setDraftMeetingIds] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const hydratedPersonIdRef = useRef<string | null>(null);
   const photoFileInputRef = useRef<HTMLInputElement | null>(null);
   const {
     createQuickCompany,
@@ -140,7 +141,12 @@ export function PeoplePage() {
     : null;
 
   useEffect(() => {
+    if (selectedPerson?.id === hydratedPersonIdRef.current) {
+      return;
+    }
+
     if (!selectedPerson) {
+      hydratedPersonIdRef.current = null;
       setDraftFirstName("");
       setDraftLastName("");
       setDraftEmail("");
@@ -156,6 +162,8 @@ export function PeoplePage() {
       return;
     }
 
+    hydratedPersonIdRef.current = selectedPerson.id;
+
     setDraftFirstName(selectedPerson.firstName ?? "");
     setDraftLastName(selectedPerson.lastName ?? "");
     setDraftEmail(selectedPerson.email ?? "");
@@ -168,7 +176,7 @@ export function PeoplePage() {
     setDraftNoteIds(selectedPerson.noteIds ?? []);
     setDraftTaskIds(selectedPerson.taskIds ?? []);
     setDraftMeetingIds(selectedPerson.meetingIds ?? []);
-  }, [selectedPerson]);
+  }, [selectedPerson, selectedPerson?.id]);
 
   useEffect(() => {
     if (!selectedPerson) {

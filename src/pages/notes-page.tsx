@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SystemCustomPropertiesPanel } from "@/components/system-custom-properties-panel";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 import { firebaseAuth } from "@/lib/firebase";
 import { migrateEmbeddedNoteImagesToStorage } from "@/lib/note-images-storage";
@@ -873,6 +874,11 @@ export function NotesPage() {
                   );
                 }}
                 onCreateOption={createQuickMeeting}
+              />
+
+              <SystemCustomPropertiesPanel
+                objectTypeId="object_type_notes"
+                recordId={selectedNote?.id ?? null}
               />
 
               <div className="space-y-2">
