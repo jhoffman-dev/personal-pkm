@@ -16,6 +16,8 @@ import {
   loadGraphPage,
   loadMeetingsPage,
   loadNotesPage,
+  loadObjectsPage,
+  loadObjectTypesPage,
   loadPeoplePage,
   loadProjectsPage,
   loadTasksPage,
@@ -71,6 +73,16 @@ const CompaniesPage = lazy(() =>
 const PeoplePage = lazy(() =>
   loadPeoplePage().then((module) => ({
     default: module.PeoplePage,
+  })),
+);
+const ObjectTypesPage = lazy(() =>
+  loadObjectTypesPage().then((module) => ({
+    default: module.ObjectTypesPage,
+  })),
+);
+const ObjectsPage = lazy(() =>
+  loadObjectsPage().then((module) => ({
+    default: module.ObjectsPage,
   })),
 );
 const GraphPage = lazy(() =>
@@ -242,6 +254,11 @@ function App() {
             element={withRouteSuspense(<CompaniesPage />)}
           />
           <Route path="people" element={withRouteSuspense(<PeoplePage />)} />
+          <Route
+            path="object-types"
+            element={withRouteSuspense(<ObjectTypesPage />)}
+          />
+          <Route path="objects" element={withRouteSuspense(<ObjectsPage />)} />
           <Route path="graph" element={withRouteSuspense(<GraphPage />)} />
           <Route
             path="assistant"

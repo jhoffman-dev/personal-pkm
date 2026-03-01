@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
+import { firebaseAuth } from "@/lib/firebase";
+import { migrateEmbeddedNoteImagesToStorage } from "@/lib/note-images-storage";
 import {
   appendUniqueTag,
   buildQuickCompanyCreateInput,
@@ -113,6 +115,7 @@ export function NotesPage() {
   const [tagInput, setTagInput] = useState("");
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
   const hydratedNoteIdRef = useRef<string | null>(null);
+  const migratedNoteIdsRef = useRef<Set<string>>(new Set());
 
   const notesWithSameTitleCount = useMemo(() => {
     if (!selectedNote) {
@@ -419,6 +422,74 @@ export function NotesPage() {
     selectedNote,
   ]);
 
+  useEffect(() => {
+    if (notesState.status !== "succeeded") {
+      return;
+    }
+
+    const userId = firebaseAuth.currentUser?.uid;
+    if (!userId) {
+      return;
+    }
+
+    const notesWithEmbeddedImages = sortedNotes.filter((note) => {
+      if (migratedNoteIdsRef.current.has(note.id)) {
+        return false;
+      }
+
+      return note.body.includes("data:image");
+    });
+
+    if (notesWithEmbeddedImages.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      for (const note of notesWithEmbeddedImages) {
+        if (cancelled) {
+          break;
+        }
+
+        migratedNoteIdsRef.current.add(note.id);
+
+        try {
+          const migrationResult = await migrateEmbeddedNoteImagesToStorage({
+            userId,
+            noteId: note.id,
+            html: note.body,
+          });
+
+          if (migrationResult.migratedCount === 0) {
+            continue;
+          }
+
+          await dispatch(
+            dataThunks.notes.updateOne({
+              id: note.id,
+              input: {
+                body: migrationResult.html,
+              },
+            }),
+          ).unwrap();
+
+          if (selectedNote?.id === note.id) {
+            setDraftBody(
+              convertDrawingLinksToEmbedBlocks(migrationResult.html),
+            );
+          }
+        } catch {
+          migratedNoteIdsRef.current.delete(note.id);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, notesState.status, selectedNote?.id, sortedNotes]);
+
   const addTag = () => {
     const { nextTags, nextTagInput } = appendUniqueTag(draftTags, tagInput);
     if (nextTags !== draftTags) {
@@ -607,6 +678,7 @@ export function NotesPage() {
                     <SimpleEditor
                       content={draftBody}
                       onContentChange={setDraftBody}
+                      noteId={selectedNote.id}
                       className="h-full"
                     />
                   </div>

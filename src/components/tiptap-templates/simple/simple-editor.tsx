@@ -79,6 +79,8 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 import { buildDrawingPath } from "@/lib/drawing-links";
 import { getDrawingById } from "@/lib/drawings-store";
+import { firebaseAuth } from "@/lib/firebase";
+import { uploadNoteImageFileForUser } from "@/lib/note-images-storage";
 
 // --- Lib ---
 import { handleImageUpload, MAX_FILE_SIZE } from "@/lib/tiptap-utils";
@@ -358,11 +360,13 @@ export function SimpleEditor({
   content,
   onContentChange,
   onTitleChange,
+  noteId,
   className,
 }: {
   content?: string;
   onContentChange?: (nextContent: string) => void;
   onTitleChange?: (title: string) => void;
+  noteId?: string;
   className?: string;
 }) {
   const hasLinkedTitle = typeof onTitleChange === "function";
@@ -387,6 +391,33 @@ export function SimpleEditor({
     }, 3500);
   }, []);
 
+  const uploadImage = useCallback(
+    async (
+      file: File,
+      onProgress?: (event: { progress: number }) => void,
+      abortSignal?: AbortSignal,
+    ): Promise<string> => {
+      const userId = firebaseAuth.currentUser?.uid;
+
+      if (!userId) {
+        return handleImageUpload(file, onProgress, abortSignal);
+      }
+
+      const effectiveNoteId = noteId?.trim() || "unsorted";
+
+      const { downloadUrl } = await uploadNoteImageFileForUser({
+        userId,
+        noteId: effectiveNoteId,
+        file,
+        onProgress,
+        abortSignal,
+      });
+
+      return downloadUrl;
+    },
+    [noteId],
+  );
+
   const insertImagesFromFiles = useCallback(
     async (view: EditorView, files: File[]) => {
       const imageFiles = files.filter((file) => file.type.startsWith("image/"));
@@ -401,7 +432,7 @@ export function SimpleEditor({
 
       for (const file of imageFiles) {
         try {
-          const src = await handleImageUpload(file);
+          const src = await uploadImage(file);
           const fileName = file.name.replace(/\.[^/.]+$/, "") || "image";
           const node = imageType.create({
             src,
@@ -419,7 +450,7 @@ export function SimpleEditor({
 
       return true;
     },
-    [showUploadToast],
+    [showUploadToast, uploadImage],
   );
 
   const extractTitle = useCallback((editorInstance: Editor) => {
@@ -541,7 +572,7 @@ export function SimpleEditor({
         accept: "image/*",
         maxSize: MAX_FILE_SIZE,
         limit: 3,
-        upload: handleImageUpload,
+        upload: uploadImage,
         onError: (error) => showUploadToast(formatImageUploadError(error)),
       }),
     ],

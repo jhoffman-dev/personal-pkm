@@ -10,6 +10,8 @@ export const loadCalendarPage = () => import("@/pages/calendar-page");
 export const loadProjectsPage = () => import("@/pages/projects-page");
 export const loadCompaniesPage = () => import("@/pages/companies-page");
 export const loadPeoplePage = () => import("@/pages/people-page");
+export const loadObjectTypesPage = () => import("@/pages/object-types-page");
+export const loadObjectsPage = () => import("@/pages/objects-page");
 export const loadGraphPage = () => import("@/pages/graph-page");
 export const loadAssistantPage = () => import("@/pages/assistant-page");
 export const loadDrawingEmbedPage = () => import("@/pages/drawing-embed-page");
@@ -25,6 +27,8 @@ const routeModuleLoaders: Record<string, RouteModuleLoader> = {
   "/projects": loadProjectsPage,
   "/companies": loadCompaniesPage,
   "/people": loadPeoplePage,
+  "/object-types": loadObjectTypesPage,
+  "/objects": loadObjectsPage,
   "/graph": loadGraphPage,
   "/assistant": loadAssistantPage,
   "/drawings/embed": loadDrawingEmbedPage,
@@ -70,6 +74,8 @@ const likelyNextRoutesByRoute: Record<string, string[]> = {
   "/projects": ["/tasks", "/companies", "/people"],
   "/companies": ["/people", "/meetings"],
   "/people": ["/companies", "/meetings"],
+  "/object-types": ["/people", "/companies"],
+  "/objects": ["/object-types", "/notes"],
   "/graph": ["/projects", "/notes"],
   "/assistant": ["/notes", "/tasks"],
 };

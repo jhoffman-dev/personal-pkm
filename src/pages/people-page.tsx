@@ -8,6 +8,8 @@ import {
 import { useEntityQuickCreate } from "@/hooks/use-entity-quick-create";
 import { useSharedTagSuggestions } from "@/hooks/use-shared-tag-suggestions";
 import { addUnique, equalSet } from "@/lib/entity-link-utils";
+import { uploadEntityImageForUser } from "@/lib/entity-images-storage";
+import { firebaseAuth } from "@/lib/firebase";
 import {
   dataActions,
   dataThunks,
@@ -15,7 +17,7 @@ import {
   useAppSelector,
 } from "@/store";
 import { Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function formatPersonName(lastName?: string, firstName?: string): string {
   return `${lastName ?? ""}, ${firstName ?? ""}`
@@ -37,6 +39,7 @@ export function PeoplePage() {
   const [draftEmail, setDraftEmail] = useState("");
   const [draftPhone, setDraftPhone] = useState("");
   const [draftAddress, setDraftAddress] = useState("");
+  const [draftPhotoUrl, setDraftPhotoUrl] = useState("");
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [draftCompanyIds, setDraftCompanyIds] = useState<string[]>([]);
@@ -44,6 +47,8 @@ export function PeoplePage() {
   const [draftNoteIds, setDraftNoteIds] = useState<string[]>([]);
   const [draftTaskIds, setDraftTaskIds] = useState<string[]>([]);
   const [draftMeetingIds, setDraftMeetingIds] = useState<string[]>([]);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const photoFileInputRef = useRef<HTMLInputElement | null>(null);
   const {
     createQuickCompany,
     createQuickMeeting,
@@ -136,12 +141,12 @@ export function PeoplePage() {
 
   useEffect(() => {
     if (!selectedPerson) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftFirstName("");
       setDraftLastName("");
       setDraftEmail("");
       setDraftPhone("");
       setDraftAddress("");
+      setDraftPhotoUrl("");
       setDraftTags([]);
       setDraftCompanyIds([]);
       setDraftProjectIds([]);
@@ -156,6 +161,7 @@ export function PeoplePage() {
     setDraftEmail(selectedPerson.email ?? "");
     setDraftPhone(selectedPerson.phone ?? "");
     setDraftAddress(selectedPerson.address ?? "");
+    setDraftPhotoUrl(selectedPerson.photoUrl ?? "");
     setDraftTags(selectedPerson.tags ?? []);
     setDraftCompanyIds(selectedPerson.companyIds ?? []);
     setDraftProjectIds(selectedPerson.projectIds ?? []);
@@ -176,6 +182,7 @@ export function PeoplePage() {
     const emailChanged = draftEmail !== (selectedPerson.email ?? "");
     const phoneChanged = draftPhone !== (selectedPerson.phone ?? "");
     const addressChanged = draftAddress !== (selectedPerson.address ?? "");
+    const photoUrlChanged = draftPhotoUrl !== (selectedPerson.photoUrl ?? "");
     const tagsChanged = !equalSet(draftTags, selectedPerson.tags ?? []);
     const companiesChanged = !equalSet(
       draftCompanyIds,
@@ -198,6 +205,7 @@ export function PeoplePage() {
       !emailChanged &&
       !phoneChanged &&
       !addressChanged &&
+      !photoUrlChanged &&
       !tagsChanged &&
       !companiesChanged &&
       !projectsChanged &&
@@ -218,6 +226,7 @@ export function PeoplePage() {
             email: draftEmail,
             phone: draftPhone,
             address: draftAddress,
+            photoUrl: draftPhotoUrl,
             tags: draftTags,
             companyIds: draftCompanyIds,
             projectIds: draftProjectIds,
@@ -239,6 +248,7 @@ export function PeoplePage() {
     draftLastName,
     draftMeetingIds,
     draftNoteIds,
+    draftPhotoUrl,
     draftPhone,
     draftProjectIds,
     draftTags,
@@ -327,6 +337,35 @@ export function PeoplePage() {
       "Unnamed person"
     : null;
 
+  const uploadPhotoFile = async (file: File) => {
+    if (!selectedPerson) {
+      return;
+    }
+
+    const userId = firebaseAuth.currentUser?.uid;
+    if (!userId) {
+      window.alert("Sign in is required to upload photos.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+
+    try {
+      const downloadUrl = await uploadEntityImageForUser({
+        userId,
+        entityCollection: "people",
+        entityId: selectedPerson.id,
+        file,
+      });
+
+      setDraftPhotoUrl(downloadUrl);
+    } catch {
+      window.alert("Unable to upload photo.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   return (
     <section className="h-[calc(100svh-41px)] p-6">
       <Card className="h-full gap-0 py-0">
@@ -374,6 +413,103 @@ export function PeoplePage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <h4 className="text-sm font-semibold">Photo</h4>
+                    {draftPhotoUrl ? (
+                      <img
+                        src={draftPhotoUrl}
+                        alt={selectedPersonName ?? "Person photo"}
+                        className="h-24 w-24 rounded-md border object-cover"
+                      />
+                    ) : null}
+                    <div
+                      tabIndex={0}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const droppedFile = Array.from(
+                          event.dataTransfer.files,
+                        ).find((file) => file.type.startsWith("image/"));
+
+                        if (!droppedFile || isUploadingPhoto) {
+                          return;
+                        }
+
+                        void uploadPhotoFile(droppedFile);
+                      }}
+                      onPaste={(event) => {
+                        const pastedFile = Array.from(event.clipboardData.items)
+                          .map((item) => item.getAsFile())
+                          .find(
+                            (file): file is File =>
+                              file instanceof File &&
+                              file.type.startsWith("image/"),
+                          );
+
+                        if (!pastedFile || isUploadingPhoto) {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        void uploadPhotoFile(pastedFile);
+                      }}
+                      className="border-input bg-background rounded-md border border-dashed p-3 text-sm"
+                    >
+                      <p className="text-muted-foreground text-xs">
+                        Drag & drop or paste an image here.
+                      </p>
+
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={isUploadingPhoto}
+                          onClick={() => {
+                            photoFileInputRef.current?.click();
+                          }}
+                        >
+                          Pick image
+                        </Button>
+                      </div>
+
+                      <input
+                        ref={photoFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (!file || isUploadingPhoto) {
+                            event.currentTarget.value = "";
+                            return;
+                          }
+
+                          void uploadPhotoFile(file);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </div>
+
+                    {isUploadingPhoto ? (
+                      <p className="text-muted-foreground text-xs">
+                        Uploading photo...
+                      </p>
+                    ) : null}
+                    {draftPhotoUrl ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setDraftPhotoUrl("")}
+                      >
+                        Clear photo
+                      </Button>
+                    ) : null}
+                  </div>
+
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold">First Name</h4>
                     <Input

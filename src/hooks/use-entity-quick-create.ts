@@ -82,6 +82,7 @@ export function useEntityQuickCreate() {
         dataThunks.companies.createOne({
           name: label.trim() || "New company",
           tags: [],
+          photoUrl: "",
           email: "",
           phone: "",
           address: "",
@@ -111,6 +112,7 @@ export function useEntityQuickCreate() {
           firstName,
           lastName,
           tags: [],
+          photoUrl: "",
           email: "",
           phone: "",
           address: "",

@@ -56,6 +56,21 @@ The first pass is a simple chat interface in `Assistant`. Next pass can add RAG 
 - Enable Google provider in Firebase Auth.
 - Add localhost app domain (for development) and your production domain.
 - Add Firestore security rules that restrict reads/writes to `request.auth.uid == uid`.
+- Add Firebase Storage security rules that restrict object access to paths under `users/{uid}/...` where `uid == request.auth.uid`.
+
+### Firebase Storage for Object Images
+
+- Object picture uploads are stored in Firebase Storage paths scoped per user:
+  - `users/{uid}/object-images/{objectTypeId}/{objectRecordId}/{propertyId}/...`
+- This uses a single configured Firebase bucket with per-user isolation by path + security rules.
+- Download URLs are cached in localStorage to avoid repeated URL resolution calls.
+
+### Firebase Storage for Note Images
+
+- Note editor image uploads are stored in Firebase Storage paths scoped per user:
+  - `users/{uid}/note-images/{noteId}/...`
+- Notes now store image URLs in HTML instead of embedded base64 payloads.
+- Existing notes with embedded `data:image` content are automatically migrated in the background after notes load.
 
 ### Firebase Environment Variables
 

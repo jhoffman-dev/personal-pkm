@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics";
 
 function requireEnv(name: string): string {
@@ -30,6 +31,7 @@ export const firebaseApp = getApps().length
 
 export const firebaseAuth = getAuth(firebaseApp);
 export const firestoreDb = getFirestore(firebaseApp);
+export const firebaseStorage = getStorage(firebaseApp);
 
 let analyticsInstance: Analytics | null = null;
 

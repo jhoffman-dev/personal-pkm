@@ -9,6 +9,8 @@ import {
   ListTodo,
   Network,
   NotebookPen,
+  TableProperties,
+  Shapes,
   Presentation,
   SquareUser,
 } from "lucide-react";
@@ -69,6 +71,16 @@ export const navItems: NavItem[] = [
     title: "People",
     to: "/people",
     icon: SquareUser,
+  },
+  {
+    title: "Object Types",
+    to: "/object-types",
+    icon: Shapes,
+  },
+  {
+    title: "Objects",
+    to: "/objects",
+    icon: TableProperties,
   },
   {
     title: "Graph",
