@@ -1,3 +1,10 @@
+/**
+ * Splits model output into optional thinking content and visible reply content.
+ *
+ * Edge cases:
+ * - Missing opening tag returns entire content as reply.
+ * - Missing closing tag returns remaining content as thinking with empty reply.
+ */
 export function parseThinkingAndReply(content: string): {
   thinking: string;
   reply: string;
@@ -29,6 +36,12 @@ export function parseThinkingAndReply(content: string): {
   };
 }
 
+/**
+ * Extracts unique citation indexes in first-appearance order.
+ *
+ * Constraint:
+ * - Only positive integer indexes from bracketed citations are returned.
+ */
 export function extractCitedSourceIndexes(content: string): number[] {
   const orderedIndexes: number[] = [];
   const seenIndexes = new Set<number>();
@@ -54,6 +67,13 @@ export type ResolvedCitation<TSource> = {
   source: TSource;
 };
 
+/**
+ * Resolves cited sources from message content and compacts citation numbering.
+ *
+ * Invariants:
+ * - `citationIndex` is reassigned to contiguous values starting at 1.
+ * - Duplicate source ids are removed from the resolved result.
+ */
 export function resolveCitedSources<TSource extends { id: string }>(
   content: string,
   sources: TSource[],
@@ -85,6 +105,9 @@ export function resolveCitedSources<TSource extends { id: string }>(
   });
 }
 
+/**
+ * Rewrites citation indexes in content to match remapped citation numbering.
+ */
 export function remapCitationIndexes(
   content: string,
   citedSources: { citationIndex: number; originalCitationIndex: number }[],

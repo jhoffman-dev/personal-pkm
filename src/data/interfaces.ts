@@ -20,6 +20,14 @@ import type {
 } from "@/data/entities";
 import type { EntityId, RelationField } from "@/data/types";
 
+/**
+ * Generic asynchronous CRUD contract for entity modules.
+ *
+ * Invariants:
+ * - `create` returns the persisted entity with a stable `id`.
+ * - `update` returns `null` when the entity does not exist.
+ * - `delete` returns `false` when the entity does not exist.
+ */
 export interface CrudDataModule<TEntity, TCreate, TUpdate> {
   list(): Promise<TEntity[]>;
   listByIds(ids: EntityId[]): Promise<TEntity[]>;
@@ -29,6 +37,12 @@ export interface CrudDataModule<TEntity, TCreate, TUpdate> {
   delete(id: EntityId): Promise<boolean>;
 }
 
+/**
+ * CRUD contract with additional relation-based filtering support.
+ *
+ * Constraint:
+ * - `relationField` must be a valid relation key for `TEntity`.
+ */
 export interface RelationalDataModule<
   TEntity,
   TCreate,
@@ -40,6 +54,7 @@ export interface RelationalDataModule<
   ): Promise<TEntity[]>;
 }
 
+/** Project data contract with associated-entity hydration. */
 export interface ProjectsDataModule extends RelationalDataModule<
   Project,
   CreateProjectInput,
@@ -50,6 +65,7 @@ export interface ProjectsDataModule extends RelationalDataModule<
   ): Promise<ProjectAssociatedRecords | null>;
 }
 
+/** Note data contract with associated-entity hydration. */
 export interface NotesDataModule extends RelationalDataModule<
   Note,
   CreateNoteInput,
@@ -58,6 +74,7 @@ export interface NotesDataModule extends RelationalDataModule<
   getAssociatedRecords(noteId: EntityId): Promise<NoteAssociatedRecords | null>;
 }
 
+/** Task data contract with associated-entity hydration. */
 export interface TasksDataModule extends RelationalDataModule<
   Task,
   CreateTaskInput,
@@ -66,6 +83,7 @@ export interface TasksDataModule extends RelationalDataModule<
   getAssociatedRecords(taskId: EntityId): Promise<TaskAssociatedRecords | null>;
 }
 
+/** Meeting data contract with associated-entity hydration. */
 export interface MeetingsDataModule extends RelationalDataModule<
   Meeting,
   CreateMeetingInput,
@@ -76,6 +94,7 @@ export interface MeetingsDataModule extends RelationalDataModule<
   ): Promise<MeetingAssociatedRecords | null>;
 }
 
+/** Company data contract with associated-entity hydration. */
 export interface CompaniesDataModule extends RelationalDataModule<
   Company,
   CreateCompanyInput,
@@ -86,6 +105,12 @@ export interface CompaniesDataModule extends RelationalDataModule<
   ): Promise<CompanyAssociatedRecords | null>;
 }
 
+/**
+ * Aggregated records related to a single project.
+ *
+ * Constraint:
+ * - `project.id` is the source anchor for all related collections.
+ */
 export interface ProjectAssociatedRecords {
   project: Project;
   people: Person[];
@@ -95,6 +120,7 @@ export interface ProjectAssociatedRecords {
   meetings: Meeting[];
 }
 
+/** Aggregated records related to a single note. */
 export interface NoteAssociatedRecords {
   note: Note;
   people: Person[];
@@ -104,6 +130,7 @@ export interface NoteAssociatedRecords {
   meetings: Meeting[];
 }
 
+/** Aggregated records related to a single task. */
 export interface TaskAssociatedRecords {
   task: Task;
   people: Person[];
@@ -113,6 +140,7 @@ export interface TaskAssociatedRecords {
   meetings: Meeting[];
 }
 
+/** Aggregated records related to a single meeting. */
 export interface MeetingAssociatedRecords {
   meeting: Meeting;
   people: Person[];
@@ -122,6 +150,7 @@ export interface MeetingAssociatedRecords {
   tasks: Task[];
 }
 
+/** Aggregated records related to a single company. */
 export interface CompanyAssociatedRecords {
   company: Company;
   people: Person[];
@@ -131,6 +160,7 @@ export interface CompanyAssociatedRecords {
   meetings: Meeting[];
 }
 
+/** Aggregated records related to a single person. */
 export interface PersonAssociatedRecords {
   person: Person;
   projects: Project[];
@@ -140,6 +170,7 @@ export interface PersonAssociatedRecords {
   companies: Company[];
 }
 
+/** Person data contract with associated-entity hydration. */
 export interface PeopleDataModule extends RelationalDataModule<
   Person,
   CreatePersonInput,
@@ -150,6 +181,12 @@ export interface PeopleDataModule extends RelationalDataModule<
   ): Promise<PersonAssociatedRecords | null>;
 }
 
+/**
+ * Root contract aggregating all entity data modules.
+ *
+ * Constraint:
+ * - All modules should share consistent not-found semantics from `CrudDataModule`.
+ */
 export interface DataModules {
   projects: ProjectsDataModule;
   notes: NotesDataModule;

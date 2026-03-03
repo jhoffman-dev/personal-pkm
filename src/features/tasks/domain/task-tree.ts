@@ -1,8 +1,44 @@
-import type { Task, TaskLevel } from "@/data/entities";
-import { normalizeTaskStatus } from "@/lib/task-defaults";
+import type { Task, TaskLevel, TaskStatus } from "@/data/entities";
+
+const TASK_STATES = [
+  "inbox",
+  "next_action",
+  "in_progress",
+  "waiting",
+  "someday",
+  "longterm",
+  "complete",
+  "archive",
+] as const;
+
+function normalizeTaskStatus(value: string | undefined): TaskStatus {
+  if (!value) {
+    return "inbox";
+  }
+
+  if (TASK_STATES.includes(value as (typeof TASK_STATES)[number])) {
+    return value as TaskStatus;
+  }
+
+  if (value === "todo") {
+    return "inbox";
+  }
+
+  if (value === "done") {
+    return "complete";
+  }
+
+  return "inbox";
+}
 
 export type TaskNode = Task & { children: TaskNode[] };
 
+/**
+ * Resolves child level constraint from a parent task level.
+ *
+ * Rule:
+ * - Stories can have `task` children; all other levels produce `subtask`.
+ */
 export function clampTaskChildLevel(parentLevel: TaskLevel): TaskLevel {
   if (parentLevel === "story") {
     return "task";
@@ -11,6 +47,12 @@ export function clampTaskChildLevel(parentLevel: TaskLevel): TaskLevel {
   return "subtask";
 }
 
+/**
+ * Computes completion progress based on descendant completion ratio.
+ *
+ * Edge case:
+ * - Leaf nodes resolve to 100 when complete, otherwise 0.
+ */
 export function getTaskProgress(node: TaskNode): number {
   const descendants: TaskNode[] = [];
 
@@ -34,6 +76,13 @@ export function getTaskProgress(node: TaskNode): number {
   return Math.round((completed / descendants.length) * 100);
 }
 
+/**
+ * Builds a parent/child task forest with normalized task fields.
+ *
+ * Invariants:
+ * - Missing/invalid parent references are treated as root nodes.
+ * - Output is sorted by `updatedAt` descending at each tree level.
+ */
 export function buildTaskTree(tasks: Task[]): TaskNode[] {
   const byId = new Map<string, TaskNode>();
 

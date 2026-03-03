@@ -15,6 +15,12 @@ function toLocalDateKey(value: string): string | null {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/**
+ * Determines whether a task timeblock date is before the provided local day.
+ *
+ * Invariant:
+ * - Invalid block start dates are treated as non-stale.
+ */
 export function isTaskTimeblockStale(
   block: TaskTimeblock,
   now = new Date(),
@@ -30,6 +36,14 @@ export function isTaskTimeblockStale(
   return blockDateKey < todayKey;
 }
 
+/**
+ * Resolves default duration minutes using clamping and step snapping rules.
+ *
+ * Rules:
+ * - Defaults to 30 for missing/invalid values.
+ * - Clamps to [10, 60].
+ * - Snaps to 10-minute increments.
+ */
 export function resolveTaskTimeblockDefaultMinutes(value?: number): number {
   if (!value || !Number.isFinite(value)) {
     return DEFAULT_DURATION_MINUTES;

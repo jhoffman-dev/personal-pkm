@@ -1,21 +1,24 @@
 const express = require("express");
 const cors = require("cors");
 const {
-  generateChatReply,
-  generateChatReplyStream,
-} = require("./ai-service.cjs");
+  createAssistantChatUseCases,
+} = require("./application/assistant-chat-use-cases.cjs");
+const { createAiGateway } = require("./infrastructure/ai/ai-gateway.cjs");
 const {
-  deleteAssistantChat,
-  listAssistantChats,
-  persistAssistantChatRecord,
-  upsertAssistantChat,
-} = require("./firestore-chat-store.cjs");
+  createFirestoreAssistantChatRepository,
+} = require("./infrastructure/storage/firestore-assistant-chat-repository.cjs");
 
 const AI_SERVER_PORT = Number(process.env.PKM_AI_SERVER_PORT || 11435);
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
+
+const assistantChatUseCases = createAssistantChatUseCases({
+  aiGateway: createAiGateway(),
+  chatRepository: createFirestoreAssistantChatRepository(),
+  logger: console,
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "pkm-ai-backend" });
@@ -76,7 +79,7 @@ app.get("/api/ai/chats", async (req, res) => {
       });
     }
 
-    const result = await listAssistantChats({ authToken, userId });
+    const result = await assistantChatUseCases.listChats({ authToken, userId });
     return res.json({ chats: result.chats });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown AI error";
@@ -103,7 +106,7 @@ app.put("/api/ai/chats/:conversationId", async (req, res) => {
       });
     }
 
-    await upsertAssistantChat({
+    await assistantChatUseCases.upsertChat({
       authToken,
       userId,
       conversationId,
@@ -151,7 +154,7 @@ app.delete("/api/ai/chats/:conversationId", async (req, res) => {
       });
     }
 
-    await deleteAssistantChat({
+    await assistantChatUseCases.deleteChat({
       authToken,
       userId,
       conversationId,
@@ -173,30 +176,10 @@ app.post("/api/ai/chat", async (req, res) => {
     }
 
     const chatRequest = buildChatRequest(req.body);
-    const result = await generateChatReply({
+    const result = await assistantChatUseCases.reply({
       ...chatRequest,
       messages,
     });
-
-    try {
-      await persistAssistantChatRecord({
-        authToken: chatRequest.authToken,
-        userId: chatRequest.userId,
-        conversationId: chatRequest.conversationId,
-        conversationTitle: chatRequest.conversationTitle,
-        provider: result.provider,
-        model: result.model,
-        systemPrompt: chatRequest.systemPrompt,
-        messages,
-        reply: result.reply,
-      });
-    } catch (persistError) {
-      const persistMessage =
-        persistError instanceof Error
-          ? persistError.message
-          : "Unknown persistence error";
-      console.warn(`[pkm-ai] failed to persist chat: ${persistMessage}`);
-    }
 
     return res.json(result);
   } catch (error) {
@@ -220,39 +203,11 @@ app.post("/api/ai/chat/stream", async (req, res) => {
   res.flushHeaders?.();
 
   try {
-    let reply = "";
-
-    for await (const chunk of generateChatReplyStream({
+    for await (const chunk of assistantChatUseCases.streamReply({
       ...chatRequest,
       messages,
     })) {
-      if (typeof chunk.delta === "string") {
-        reply += chunk.delta;
-      }
-
       res.write(`${JSON.stringify(chunk)}\n`);
-    }
-
-    try {
-      await persistAssistantChatRecord({
-        authToken: chatRequest.authToken,
-        userId: chatRequest.userId,
-        conversationId: chatRequest.conversationId,
-        conversationTitle: chatRequest.conversationTitle,
-        provider: chatRequest.provider,
-        model: chatRequest.model || null,
-        systemPrompt: chatRequest.systemPrompt,
-        messages,
-        reply,
-      });
-    } catch (persistError) {
-      const persistMessage =
-        persistError instanceof Error
-          ? persistError.message
-          : "Unknown persistence error";
-      console.warn(
-        `[pkm-ai] failed to persist streamed chat: ${persistMessage}`,
-      );
     }
 
     if (!res.writableEnded) {
