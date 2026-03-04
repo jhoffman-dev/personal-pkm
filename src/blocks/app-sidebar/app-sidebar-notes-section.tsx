@@ -6,15 +6,18 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import {
+  getSidebarOpenTargetFromModifierKeys,
+  type AppSidebarOpenTarget,
+} from "@/blocks/app-sidebar/app-sidebar-open-target";
 import { DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 
 export function AppSidebarNotesSection(params: {
   notes: Array<{ id: string; title: string }>;
   activeTabId: string | null;
-  onSelectNote: (noteId: string) => void;
-  onOpenNoteBackground: (noteId: string) => void;
+  onSelectNote: (noteId: string, openTarget: AppSidebarOpenTarget) => void;
 }) {
-  const { notes, activeTabId, onSelectNote, onOpenNoteBackground } = params;
+  const { notes, activeTabId, onSelectNote } = params;
 
   return (
     <SidebarGroup>
@@ -31,21 +34,21 @@ export function AppSidebarNotesSection(params: {
                 <SidebarMenuButton
                   isActive={activeTabId === note.id}
                   onClick={(event) => {
-                    const openInBackgroundTab = event.metaKey || event.ctrlKey;
-
-                    if (openInBackgroundTab) {
-                      onOpenNoteBackground(note.id);
-                      return;
-                    }
-
-                    onSelectNote(note.id);
+                    onSelectNote(
+                      note.id,
+                      getSidebarOpenTargetFromModifierKeys({
+                        altKey: event.altKey,
+                        metaKey: event.metaKey,
+                        ctrlKey: event.ctrlKey,
+                      }),
+                    );
                   }}
                   onAuxClick={(event) => {
                     if (event.button !== 1) {
                       return;
                     }
 
-                    onOpenNoteBackground(note.id);
+                    onSelectNote(note.id, "active-pane-new-tab");
                   }}
                 >
                   <span>{note.title || DEFAULT_NOTE_TITLE}</span>

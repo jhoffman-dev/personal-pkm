@@ -1,5 +1,9 @@
 import { Button } from "@/components/ui/button";
 import {
+  getSidebarOpenTargetFromModifierKeys,
+  type AppSidebarOpenTarget,
+} from "@/blocks/app-sidebar/app-sidebar-open-target";
+import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -13,7 +17,10 @@ export function AppSidebarMeetingsSection(params: {
   meetings: Array<{ id: string; title: string }>;
   selectedMeetingId: string | null;
   onCreateMeeting: () => void;
-  onSelectMeeting: (meetingId: string) => void;
+  onSelectMeeting: (
+    meetingId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => void;
 }) {
   const { meetings, selectedMeetingId, onCreateMeeting, onSelectMeeting } =
     params;
@@ -42,8 +49,22 @@ export function AppSidebarMeetingsSection(params: {
               <SidebarMenuItem key={meeting.id}>
                 <SidebarMenuButton
                   isActive={selectedMeetingId === meeting.id}
-                  onClick={() => {
-                    onSelectMeeting(meeting.id);
+                  onClick={(event) => {
+                    onSelectMeeting(
+                      meeting.id,
+                      getSidebarOpenTargetFromModifierKeys({
+                        altKey: event.altKey,
+                        metaKey: event.metaKey,
+                        ctrlKey: event.ctrlKey,
+                      }),
+                    );
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button !== 1) {
+                      return;
+                    }
+
+                    onSelectMeeting(meeting.id, "active-pane-new-tab");
                   }}
                 >
                   <span>{meeting.title}</span>
@@ -61,7 +82,10 @@ export function AppSidebarCompaniesSection(params: {
   companies: Array<{ id: string; name: string }>;
   selectedCompanyId: string | null;
   onCreateCompany: () => void;
-  onSelectCompany: (companyId: string) => void;
+  onSelectCompany: (
+    companyId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => void;
 }) {
   const { companies, selectedCompanyId, onCreateCompany, onSelectCompany } =
     params;
@@ -90,8 +114,22 @@ export function AppSidebarCompaniesSection(params: {
               <SidebarMenuItem key={company.id}>
                 <SidebarMenuButton
                   isActive={selectedCompanyId === company.id}
-                  onClick={() => {
-                    onSelectCompany(company.id);
+                  onClick={(event) => {
+                    onSelectCompany(
+                      company.id,
+                      getSidebarOpenTargetFromModifierKeys({
+                        altKey: event.altKey,
+                        metaKey: event.metaKey,
+                        ctrlKey: event.ctrlKey,
+                      }),
+                    );
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button !== 1) {
+                      return;
+                    }
+
+                    onSelectCompany(company.id, "active-pane-new-tab");
                   }}
                 >
                   <span>{company.name}</span>
@@ -109,7 +147,7 @@ export function AppSidebarPeopleSection(params: {
   people: Array<{ id: string; firstName?: string; lastName?: string }>;
   selectedPersonId: string | null;
   onCreatePerson: () => void;
-  onSelectPerson: (personId: string) => void;
+  onSelectPerson: (personId: string, openTarget: AppSidebarOpenTarget) => void;
 }) {
   const { people, selectedPersonId, onCreatePerson, onSelectPerson } = params;
 
@@ -143,8 +181,22 @@ export function AppSidebarPeopleSection(params: {
                 <SidebarMenuItem key={person.id}>
                   <SidebarMenuButton
                     isActive={selectedPersonId === person.id}
-                    onClick={() => {
-                      onSelectPerson(person.id);
+                    onClick={(event) => {
+                      onSelectPerson(
+                        person.id,
+                        getSidebarOpenTargetFromModifierKeys({
+                          altKey: event.altKey,
+                          metaKey: event.metaKey,
+                          ctrlKey: event.ctrlKey,
+                        }),
+                      );
+                    }}
+                    onAuxClick={(event) => {
+                      if (event.button !== 1) {
+                        return;
+                      }
+
+                      onSelectPerson(person.id, "active-pane-new-tab");
                     }}
                   >
                     <span>{fullName}</span>

@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/sidebar";
 import * as React from "react";
 import { useLocation } from "react-router-dom";
-import { getRouteTitle, isRouteActive } from "@/routes/navigation";
+import { getRouteTitle, isRouteActive, navItems } from "@/routes/navigation";
 import { useAppDispatch } from "@/store";
 import {
   companiesStateFacade,
@@ -19,6 +19,7 @@ import {
   useMeetingsStateFacade,
 } from "@/features/meetings";
 import {
+  notesTabsFacade,
   notesEntityStateFacade,
   useNotesEntityStateFacade,
   useNotesTabsFacade,
@@ -43,14 +44,32 @@ import {
 } from "@/blocks/app-sidebar/app-sidebar-entity-sections";
 import { AppSidebarIconRail } from "@/blocks/app-sidebar/app-sidebar-icon-rail";
 import { AppSidebarNotesSection } from "@/blocks/app-sidebar/app-sidebar-notes-section";
+import { type AppSidebarOpenTarget } from "@/blocks/app-sidebar/app-sidebar-open-target";
 import { AppSidebarProjectsSection } from "@/blocks/app-sidebar/app-sidebar-projects-section";
 import { useAppSidebarRouteDataEffects } from "@/blocks/app-sidebar/app-sidebar-route-data-effects";
 import { AppSidebarTasksSection } from "@/blocks/app-sidebar/app-sidebar-tasks-section";
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  onOpenWorkbenchRoute: (
+    routePath: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => "primary" | "secondary";
+}
+
+function getInitialRailRoute(pathname: string): string {
+  const matchingNavItem = navItems.find((item) =>
+    isRouteActive(pathname, item.to),
+  );
+  return matchingNavItem?.to ?? "/dashboard";
+}
+
+export function AppSidebar({
+  onOpenWorkbenchRoute,
+  ...props
+}: AppSidebarProps) {
   const dispatch = useAppDispatch();
   const { notesState } = useNotesEntityStateFacade();
-  const { activeTabId, openNoteTab, replaceActiveTab } = useNotesTabsFacade();
+  const { activeTabId } = useNotesTabsFacade();
   const { projectsState } = useProjectsStateFacade();
   const { meetingsState } = useMeetingsStateFacade();
   const { companiesState } = useCompaniesStateFacade();
@@ -59,14 +78,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { selectedProjectId, setSelectedProjectId } = useTasksViewFacade();
   const { setOpen } = useSidebar();
   const { pathname } = useLocation();
-  const activeTitle = getRouteTitle(pathname);
-  const isNotesRoute = isRouteActive(pathname, "/notes");
-  const isTasksRoute = isRouteActive(pathname, "/tasks");
-  const isMeetingsRoute = isRouteActive(pathname, "/meetings");
-  const isProjectsRoute = isRouteActive(pathname, "/projects");
-  const isCompaniesRoute = isRouteActive(pathname, "/companies");
-  const isPeopleRoute = isRouteActive(pathname, "/people");
-  const isAssistantRoute = isRouteActive(pathname, "/assistant");
+  const [activeRailRoute, setActiveRailRoute] = React.useState<string>(() =>
+    getInitialRailRoute(pathname),
+  );
+  const [currentOpenTarget, setCurrentOpenTarget] =
+    React.useState<AppSidebarOpenTarget>("active-pane");
+  const activeTitle = getRouteTitle(activeRailRoute);
+  const isNotesRoute = isRouteActive(activeRailRoute, "/notes");
+  const isTasksRoute = isRouteActive(activeRailRoute, "/tasks");
+  const isMeetingsRoute = isRouteActive(activeRailRoute, "/meetings");
+  const isProjectsRoute = isRouteActive(activeRailRoute, "/projects");
+  const isCompaniesRoute = isRouteActive(activeRailRoute, "/companies");
+  const isPeopleRoute = isRouteActive(activeRailRoute, "/people");
+  const isAssistantRoute = isRouteActive(activeRailRoute, "/assistant");
   const {
     assistantState,
     sortedAssistantConversations,
@@ -120,52 +144,120 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     peopleStatus: peopleState.status,
   });
 
+  React.useEffect(() => {
+    const resolveOpenTargetFromModifierKeys = (event: KeyboardEvent) => {
+      if (event.altKey) {
+        return "other-pane" as const;
+      }
+
+      if (event.metaKey || event.ctrlKey) {
+        return "active-pane-new-tab" as const;
+      }
+
+      return "active-pane" as const;
+    };
+
+    const handleKeyEvent = (event: KeyboardEvent) => {
+      setCurrentOpenTarget(resolveOpenTargetFromModifierKeys(event));
+    };
+
+    const handleWindowBlur = () => {
+      setCurrentOpenTarget("active-pane");
+    };
+
+    window.addEventListener("keydown", handleKeyEvent);
+    window.addEventListener("keyup", handleKeyEvent);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyEvent);
+      window.removeEventListener("keyup", handleKeyEvent);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, []);
+
+  const currentOpenTargetLabel =
+    currentOpenTarget === "active-pane"
+      ? "Active pane"
+      : currentOpenTarget === "other-pane"
+        ? "Other pane"
+        : "New tab";
+
   const handleOpenSidebar = () => {
     setOpen(true);
   };
 
-  const handleSelectNote = (noteId: string) => {
-    replaceActiveTab(noteId);
+  const handleSelectNote = (
+    noteId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => {
+    const destinationScopeId = onOpenWorkbenchRoute("/notes", openTarget);
+
+    if (openTarget === "active-pane-new-tab") {
+      notesTabsFacade.openNoteTab(
+        {
+          id: noteId,
+          activate: true,
+        },
+        destinationScopeId,
+      );
+    } else {
+      notesTabsFacade.replaceActiveTab(noteId, destinationScopeId);
+    }
+
     notesEntityStateFacade.setSelectedNoteId(noteId);
   };
 
-  const handleOpenNoteInBackground = (noteId: string) => {
-    openNoteTab({
-      id: noteId,
-      activate: false,
-    });
-  };
-
-  const handleSelectTaskProject = (projectId: string | null) => {
+  const handleSelectTaskProject = (
+    projectId: string | null,
+    openTarget: AppSidebarOpenTarget,
+  ) => {
     setSelectedProjectId(projectId);
+    onOpenWorkbenchRoute("/tasks", openTarget);
   };
 
   const handleCreateMeeting = () => {
     void createMeeting();
   };
 
-  const handleSelectMeeting = (meetingId: string) => {
+  const handleSelectMeeting = (
+    meetingId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => {
     meetingsStateFacade.setSelectedMeetingId(meetingId);
+    onOpenWorkbenchRoute("/meetings", openTarget);
   };
 
-  const handleSelectProject = (projectId: string) => {
+  const handleSelectProject = (
+    projectId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => {
     projectsStateFacade.setSelectedProjectId(projectId);
+    onOpenWorkbenchRoute("/projects", openTarget);
   };
 
   const handleCreateCompany = () => {
     void createCompany();
   };
 
-  const handleSelectCompany = (companyId: string) => {
+  const handleSelectCompany = (
+    companyId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => {
     companiesStateFacade.setSelectedCompanyId(companyId);
+    onOpenWorkbenchRoute("/companies", openTarget);
   };
 
   const handleCreatePerson = () => {
     void createPerson();
   };
 
-  const handleSelectPerson = (personId: string) => {
+  const handleSelectPerson = (
+    personId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => {
     peopleStateFacade.setSelectedPersonId(personId);
+    onOpenWorkbenchRoute("/people", openTarget);
   };
 
   return (
@@ -177,15 +269,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* ----------------- */}
       {/* Sidebar icon rail */}
       <AppSidebarIconRail
-        pathname={pathname}
+        activeRailRoute={activeRailRoute}
         onOpenSidebar={handleOpenSidebar}
+        onSelectRailRoute={setActiveRailRoute}
       />
 
       {/* --------------------- */}
       {/* Sidebar inner content */}
       <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-        <SidebarHeader className="flex flex-row items-center justify-between border-b px-4">
+        <SidebarHeader className="flex flex-col items-start gap-1 border-b px-4 py-3">
           <h3 className="font-medium">{activeTitle}</h3>
+          <p className="text-muted-foreground text-[11px] leading-tight">
+            Destination: {currentOpenTargetLabel} · ⌥ Other pane · ⌘/Ctrl New
+            tab
+          </p>
           {/* <button
             onClick={() => setOpen(false)}
             className="h-6 w-6 p-0 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
@@ -199,7 +296,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               notes={sortedNotes}
               activeTabId={activeTabId}
               onSelectNote={handleSelectNote}
-              onOpenNoteBackground={handleOpenNoteInBackground}
             />
           ) : isTasksRoute ? (
             <AppSidebarTasksSection

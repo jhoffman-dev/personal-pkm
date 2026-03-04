@@ -14,7 +14,6 @@ import {
 import { navItems } from "@/routes/navigation";
 import { prefetchRouteModule } from "@/routes/route-module-loaders";
 import { isRouteActive } from "@/routes/navigation";
-import { NavLink } from "react-router-dom";
 
 const user = {
   name: "James Hoffman",
@@ -23,10 +22,11 @@ const user = {
 };
 
 export function AppSidebarIconRail(params: {
-  pathname: string;
+  activeRailRoute: string;
   onOpenSidebar: () => void;
+  onSelectRailRoute: (routePath: string) => void;
 }) {
-  const { pathname, onOpenSidebar } = params;
+  const { activeRailRoute, onOpenSidebar, onSelectRailRoute } = params;
 
   return (
     <Sidebar
@@ -41,27 +41,25 @@ export function AppSidebarIconRail(params: {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    asChild
                     tooltip={{
                       children: item.title,
                       hidden: false,
                     }}
-                    isActive={isRouteActive(pathname, item.to)}
+                    isActive={isRouteActive(activeRailRoute, item.to)}
                     className="px-2.5 md:px-2"
+                    onMouseEnter={() => {
+                      prefetchRouteModule(item.to);
+                    }}
+                    onFocus={() => {
+                      prefetchRouteModule(item.to);
+                    }}
+                    onClick={() => {
+                      onSelectRailRoute(item.to);
+                      onOpenSidebar();
+                    }}
                   >
-                    <NavLink
-                      to={item.to}
-                      onMouseEnter={() => {
-                        prefetchRouteModule(item.to);
-                      }}
-                      onFocus={() => {
-                        prefetchRouteModule(item.to);
-                      }}
-                      onClick={onOpenSidebar}
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </NavLink>
+                    <item.icon />
+                    <span>{item.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

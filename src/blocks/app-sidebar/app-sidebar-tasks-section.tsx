@@ -6,12 +6,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import {
+  getSidebarOpenTargetFromModifierKeys,
+  type AppSidebarOpenTarget,
+} from "@/blocks/app-sidebar/app-sidebar-open-target";
 
 export function AppSidebarTasksSection(params: {
   selectedProjectId: string | null;
   allTaskCount: number;
   projectsWithTaskCount: Array<{ id: string; name: string; taskCount: number }>;
-  onSelectProject: (projectId: string | null) => void;
+  onSelectProject: (
+    projectId: string | null,
+    openTarget: AppSidebarOpenTarget,
+  ) => void;
 }) {
   const {
     selectedProjectId,
@@ -28,8 +35,22 @@ export function AppSidebarTasksSection(params: {
           <SidebarMenuItem>
             <SidebarMenuButton
               isActive={selectedProjectId === null}
-              onClick={() => {
-                onSelectProject(null);
+              onClick={(event) => {
+                onSelectProject(
+                  null,
+                  getSidebarOpenTargetFromModifierKeys({
+                    altKey: event.altKey,
+                    metaKey: event.metaKey,
+                    ctrlKey: event.ctrlKey,
+                  }),
+                );
+              }}
+              onAuxClick={(event) => {
+                if (event.button !== 1) {
+                  return;
+                }
+
+                onSelectProject(null, "active-pane-new-tab");
               }}
             >
               <span>All Tasks</span>
@@ -43,8 +64,22 @@ export function AppSidebarTasksSection(params: {
             <SidebarMenuItem key={project.id}>
               <SidebarMenuButton
                 isActive={selectedProjectId === project.id}
-                onClick={() => {
-                  onSelectProject(project.id);
+                onClick={(event) => {
+                  onSelectProject(
+                    project.id,
+                    getSidebarOpenTargetFromModifierKeys({
+                      altKey: event.altKey,
+                      metaKey: event.metaKey,
+                      ctrlKey: event.ctrlKey,
+                    }),
+                  );
+                }}
+                onAuxClick={(event) => {
+                  if (event.button !== 1) {
+                    return;
+                  }
+
+                  onSelectProject(project.id, "active-pane-new-tab");
                 }}
               >
                 <span>{project.name}</span>

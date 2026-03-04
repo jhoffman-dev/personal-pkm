@@ -2,13 +2,16 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/blocks/app-sidebar/app-sidebar";
 import { AppSidebarAssistantSection } from "@/blocks/app-sidebar/app-sidebar-assistant-section";
 import { useAppSidebarAssistantState } from "@/blocks/app-sidebar/app-sidebar-assistant-state";
+import { type AppSidebarOpenTarget } from "@/blocks/app-sidebar/app-sidebar-open-target";
 import { AppBar } from "@/components/app-bar";
 import { DevOutputPanel } from "@/components/dev-output-panel";
 import { DevRouteTimingPanel } from "@/components/dev-route-timing-panel";
 import { Button } from "@/components/ui/button";
+import { WorkbenchPaneScopeProvider } from "@/lib/workbench-pane-scope";
 import { createEmptyNoteInput } from "@/lib/note-defaults";
 import { getRouteTitle } from "@/routes/navigation";
 import { prefetchRouteModule } from "@/routes/route-module-loaders";
+import { WorkbenchRouteHost } from "@/routes/workbench-route-definitions";
 import { useAppDispatch } from "@/store";
 import {
   notesDataRuntime,
@@ -34,18 +37,35 @@ const WORKBENCH_EDITOR_GROUPS_STORAGE_KEY = "pkm.workbench.editor-groups.v1";
 type BottomPanelView = "route-timing" | "output";
 type EditorGroupId = "primary" | "secondary";
 
+interface EditorGroupRouteTab {
+  pathname: string;
+  title: string;
+}
+
 const DEFAULT_BOTTOM_PANEL_VIEW: BottomPanelView = "route-timing";
 
 interface EditorGroupsState {
   isSplitLayout: boolean;
   activeGroupId: EditorGroupId;
   primaryGroupWidthPercent: number;
+  primaryGroupPathname: string | null;
+  primaryGroupTitle: string;
+  primaryGroupTabs: EditorGroupRouteTab[];
+  secondaryGroupPathname: string | null;
+  secondaryGroupTitle: string;
+  secondaryGroupTabs: EditorGroupRouteTab[];
 }
 
 const DEFAULT_EDITOR_GROUPS_STATE: EditorGroupsState = {
   isSplitLayout: false,
   activeGroupId: "primary",
   primaryGroupWidthPercent: 50,
+  primaryGroupPathname: null,
+  primaryGroupTitle: "Group 1",
+  primaryGroupTabs: [],
+  secondaryGroupPathname: null,
+  secondaryGroupTitle: "Group 2",
+  secondaryGroupTabs: [],
 };
 
 interface WorkbenchLayoutState {
@@ -64,9 +84,123 @@ const MIN_BOTTOM_PANEL_HEIGHT = 140;
 const MAX_BOTTOM_PANEL_HEIGHT = 420;
 const MIN_PRIMARY_GROUP_WIDTH_PERCENT = 30;
 const MAX_PRIMARY_GROUP_WIDTH_PERCENT = 70;
+const MAX_EDITOR_GROUP_TABS = 8;
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function normalizeEditorGroupRouteTabs(value: unknown): EditorGroupRouteTab[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const normalizedTabs = value.reduce<EditorGroupRouteTab[]>((tabs, item) => {
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      !("pathname" in item) ||
+      !("title" in item)
+    ) {
+      return tabs;
+    }
+
+    const { pathname, title } = item as {
+      pathname: unknown;
+      title: unknown;
+    };
+
+    if (typeof pathname !== "string" || typeof title !== "string") {
+      return tabs;
+    }
+
+    const existingIndex = tabs.findIndex((tab) => tab.pathname === pathname);
+    if (existingIndex >= 0) {
+      tabs.splice(existingIndex, 1);
+    }
+
+    tabs.push({ pathname, title });
+    return tabs;
+  }, []);
+
+  return normalizedTabs.slice(-MAX_EDITOR_GROUP_TABS);
+}
+
+function upsertEditorGroupRouteTab(
+  tabs: EditorGroupRouteTab[],
+  pathname: string,
+  title: string,
+): EditorGroupRouteTab[] {
+  const lastTab = tabs[tabs.length - 1];
+  if (lastTab?.pathname === pathname && lastTab.title === title) {
+    return tabs;
+  }
+
+  const nextTabs = tabs.filter((tab) => tab.pathname !== pathname);
+  nextTabs.push({ pathname, title });
+  return nextTabs.slice(-MAX_EDITOR_GROUP_TABS);
+}
+
+function getLastEditorGroupPathname(
+  tabs: EditorGroupRouteTab[],
+): string | null {
+  const lastTab = tabs[tabs.length - 1];
+  return lastTab?.pathname ?? null;
+}
+
+function getTabTitleForPath(
+  tabs: EditorGroupRouteTab[],
+  pathname: string | null,
+): string | null {
+  if (!pathname) {
+    return null;
+  }
+
+  const matchingTab = tabs.find((tab) => tab.pathname === pathname);
+  return matchingTab?.title ?? null;
+}
+
+function buildToggledEditorSplitState(
+  previous: EditorGroupsState,
+  currentPathname: string,
+): EditorGroupsState {
+  if (previous.isSplitLayout) {
+    return {
+      ...previous,
+      isSplitLayout: false,
+      activeGroupId: "primary",
+    };
+  }
+
+  const primaryGroupPathname =
+    previous.primaryGroupPathname ??
+    getLastEditorGroupPathname(previous.primaryGroupTabs) ??
+    currentPathname;
+  const secondaryGroupPathname =
+    previous.secondaryGroupPathname ??
+    getLastEditorGroupPathname(previous.secondaryGroupTabs) ??
+    primaryGroupPathname;
+  const primaryGroupTitle = getRouteTitle(primaryGroupPathname);
+  const secondaryGroupTitle = getRouteTitle(secondaryGroupPathname);
+
+  return {
+    ...previous,
+    isSplitLayout: true,
+    primaryGroupPathname,
+    primaryGroupTitle,
+    primaryGroupTabs: upsertEditorGroupRouteTab(
+      previous.primaryGroupTabs,
+      primaryGroupPathname,
+      primaryGroupTitle,
+    ),
+    secondaryGroupPathname,
+    secondaryGroupTitle,
+    secondaryGroupTabs: upsertEditorGroupRouteTab(
+      previous.secondaryGroupTabs,
+      secondaryGroupPathname,
+      secondaryGroupTitle,
+    ),
+  };
 }
 
 function loadPersistedBoolean(storageKey: string, fallback: boolean): boolean {
@@ -147,7 +281,32 @@ function loadEditorGroupsState(): EditorGroupsState {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<EditorGroupsState>;
+    const parsed = JSON.parse(raw) as Partial<EditorGroupsState> & {
+      primaryGroupTabs?: unknown;
+      secondaryGroupTabs?: unknown;
+    };
+
+    const primaryGroupTabs = normalizeEditorGroupRouteTabs(
+      parsed.primaryGroupTabs,
+    );
+    const secondaryGroupTabs = normalizeEditorGroupRouteTabs(
+      parsed.secondaryGroupTabs,
+    );
+    const primaryGroupPathname =
+      typeof parsed.primaryGroupPathname === "string"
+        ? parsed.primaryGroupPathname
+        : getLastEditorGroupPathname(primaryGroupTabs);
+    const secondaryGroupPathname =
+      typeof parsed.secondaryGroupPathname === "string"
+        ? parsed.secondaryGroupPathname
+        : getLastEditorGroupPathname(secondaryGroupTabs);
+    const primaryGroupTitleFallback =
+      getTabTitleForPath(primaryGroupTabs, primaryGroupPathname) ??
+      (primaryGroupPathname ? getRouteTitle(primaryGroupPathname) : null);
+    const secondaryGroupTitleFallback =
+      getTabTitleForPath(secondaryGroupTabs, secondaryGroupPathname) ??
+      (secondaryGroupPathname ? getRouteTitle(secondaryGroupPathname) : null);
+
     return {
       isSplitLayout:
         typeof parsed.isSplitLayout === "boolean"
@@ -166,6 +325,24 @@ function loadEditorGroupsState(): EditorGroupsState {
               MAX_PRIMARY_GROUP_WIDTH_PERCENT,
             )
           : DEFAULT_EDITOR_GROUPS_STATE.primaryGroupWidthPercent,
+      primaryGroupPathname:
+        primaryGroupPathname ??
+        DEFAULT_EDITOR_GROUPS_STATE.primaryGroupPathname,
+      primaryGroupTitle:
+        typeof parsed.primaryGroupTitle === "string"
+          ? parsed.primaryGroupTitle
+          : (primaryGroupTitleFallback ??
+            DEFAULT_EDITOR_GROUPS_STATE.primaryGroupTitle),
+      primaryGroupTabs,
+      secondaryGroupPathname:
+        secondaryGroupPathname ??
+        DEFAULT_EDITOR_GROUPS_STATE.secondaryGroupPathname,
+      secondaryGroupTitle:
+        typeof parsed.secondaryGroupTitle === "string"
+          ? parsed.secondaryGroupTitle
+          : (secondaryGroupTitleFallback ??
+            DEFAULT_EDITOR_GROUPS_STATE.secondaryGroupTitle),
+      secondaryGroupTabs,
     };
   } catch {
     return DEFAULT_EDITOR_GROUPS_STATE;
@@ -177,7 +354,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const title = getRouteTitle(pathname);
-  const { openNoteTab } = useNotesTabsFacade();
+  const { openNoteTab, setActiveScope } = useNotesTabsFacade();
   const { setSelectedNoteId } = useNotesEntityStateFacade();
   const [isCreatingNote, setIsCreatingNote] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(() =>
@@ -247,6 +424,58 @@ export default function Layout() {
   }, [editorGroupsState]);
 
   useEffect(() => {
+    setActiveScope(editorGroupsState.activeGroupId);
+  }, [editorGroupsState.activeGroupId, setActiveScope]);
+
+  useEffect(() => {
+    setEditorGroupsState((previous) => {
+      if (previous.activeGroupId === "primary") {
+        const nextPrimaryGroupTabs = upsertEditorGroupRouteTab(
+          previous.primaryGroupTabs,
+          pathname,
+          title,
+        );
+
+        if (
+          previous.primaryGroupPathname === pathname &&
+          previous.primaryGroupTitle === title &&
+          previous.primaryGroupTabs === nextPrimaryGroupTabs
+        ) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          primaryGroupPathname: pathname,
+          primaryGroupTitle: title,
+          primaryGroupTabs: nextPrimaryGroupTabs,
+        };
+      }
+
+      const nextSecondaryGroupTabs = upsertEditorGroupRouteTab(
+        previous.secondaryGroupTabs,
+        pathname,
+        title,
+      );
+
+      if (
+        previous.secondaryGroupPathname === pathname &&
+        previous.secondaryGroupTitle === title &&
+        previous.secondaryGroupTabs === nextSecondaryGroupTabs
+      ) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        secondaryGroupPathname: pathname,
+        secondaryGroupTitle: title,
+        secondaryGroupTabs: nextSecondaryGroupTabs,
+      };
+    });
+  }, [pathname, title]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const isModifierPressed = event.metaKey || event.ctrlKey;
       if (!isModifierPressed) {
@@ -271,13 +500,9 @@ export default function Layout() {
 
       if (!event.altKey && (event.key === "\\" || event.code === "Backslash")) {
         event.preventDefault();
-        setEditorGroupsState((previous) => ({
-          ...previous,
-          isSplitLayout: !previous.isSplitLayout,
-          activeGroupId: previous.isSplitLayout
-            ? "primary"
-            : previous.activeGroupId,
-        }));
+        setEditorGroupsState((previous) =>
+          buildToggledEditorSplitState(previous, pathname),
+        );
         return;
       }
 
@@ -292,7 +517,7 @@ export default function Layout() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [pathname]);
 
   const handleRightSidebarResizeStart = (
     event: ReactMouseEvent<HTMLDivElement>,
@@ -407,20 +632,114 @@ export default function Layout() {
   };
 
   const toggleEditorSplitLayout = () => {
-    setEditorGroupsState((previous) => ({
-      ...previous,
-      isSplitLayout: !previous.isSplitLayout,
-      activeGroupId: previous.isSplitLayout
-        ? "primary"
-        : previous.activeGroupId,
-    }));
+    setEditorGroupsState((previous) =>
+      buildToggledEditorSplitState(previous, pathname),
+    );
   };
 
-  const setActiveEditorGroup = (groupId: EditorGroupId) => {
-    setEditorGroupsState((previous) => ({
-      ...previous,
-      activeGroupId: groupId,
-    }));
+  const activateEditorGroup = (groupId: EditorGroupId) => {
+    const targetPathname =
+      groupId === "primary"
+        ? (editorGroupsState.primaryGroupPathname ??
+          getLastEditorGroupPathname(editorGroupsState.primaryGroupTabs) ??
+          pathname)
+        : (editorGroupsState.secondaryGroupPathname ??
+          getLastEditorGroupPathname(editorGroupsState.secondaryGroupTabs) ??
+          pathname);
+    const targetTitle = getRouteTitle(targetPathname);
+
+    setEditorGroupsState((previous) =>
+      groupId === "primary"
+        ? {
+            ...previous,
+            activeGroupId: "primary",
+            primaryGroupPathname: targetPathname,
+            primaryGroupTitle: targetTitle,
+            primaryGroupTabs: upsertEditorGroupRouteTab(
+              previous.primaryGroupTabs,
+              targetPathname,
+              targetTitle,
+            ),
+          }
+        : {
+            ...previous,
+            activeGroupId: "secondary",
+            secondaryGroupPathname: targetPathname,
+            secondaryGroupTitle: targetTitle,
+            secondaryGroupTabs: upsertEditorGroupRouteTab(
+              previous.secondaryGroupTabs,
+              targetPathname,
+              targetTitle,
+            ),
+          },
+    );
+
+    if (targetPathname && targetPathname !== pathname) {
+      navigate(targetPathname);
+    }
+  };
+
+  const openWorkbenchRouteFromSidebar = (
+    routePath: string,
+    openTarget: AppSidebarOpenTarget,
+  ): EditorGroupId => {
+    const normalizedRoutePath = routePath.startsWith("/")
+      ? routePath
+      : `/${routePath}`;
+    const destinationGroupId: EditorGroupId =
+      openTarget === "other-pane"
+        ? editorGroupsState.activeGroupId === "primary"
+          ? "secondary"
+          : "primary"
+        : editorGroupsState.activeGroupId;
+    const destinationTitle = getRouteTitle(normalizedRoutePath);
+
+    setEditorGroupsState((previous) => {
+      let nextState = previous;
+
+      if (openTarget === "other-pane" && !previous.isSplitLayout) {
+        nextState = buildToggledEditorSplitState(previous, pathname);
+      }
+
+      const resolvedDestinationGroupId: EditorGroupId =
+        openTarget === "other-pane"
+          ? nextState.activeGroupId === "primary"
+            ? "secondary"
+            : "primary"
+          : nextState.activeGroupId;
+
+      if (resolvedDestinationGroupId === "primary") {
+        return {
+          ...nextState,
+          activeGroupId: "primary",
+          primaryGroupPathname: normalizedRoutePath,
+          primaryGroupTitle: destinationTitle,
+          primaryGroupTabs: upsertEditorGroupRouteTab(
+            nextState.primaryGroupTabs,
+            normalizedRoutePath,
+            destinationTitle,
+          ),
+        };
+      }
+
+      return {
+        ...nextState,
+        activeGroupId: "secondary",
+        secondaryGroupPathname: normalizedRoutePath,
+        secondaryGroupTitle: destinationTitle,
+        secondaryGroupTabs: upsertEditorGroupRouteTab(
+          nextState.secondaryGroupTabs,
+          normalizedRoutePath,
+          destinationTitle,
+        ),
+      };
+    });
+
+    if (pathname !== normalizedRoutePath) {
+      navigate(normalizedRoutePath);
+    }
+
+    return destinationGroupId;
   };
 
   const createNoteWithTimeout = async (timeoutMs: number) => {
@@ -459,9 +778,16 @@ export default function Layout() {
     }
   };
 
+  const primaryPanePathname =
+    editorGroupsState.primaryGroupPathname ??
+    getLastEditorGroupPathname(editorGroupsState.primaryGroupTabs);
+  const secondaryPanePathname =
+    editorGroupsState.secondaryGroupPathname ??
+    getLastEditorGroupPathname(editorGroupsState.secondaryGroupTabs);
+
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar onOpenWorkbenchRoute={openWorkbenchRouteFromSidebar} />
       <SidebarInset>
         <AppBar
           title={title}
@@ -481,32 +807,30 @@ export default function Layout() {
             {editorGroupsState.isSplitLayout ? (
               <div className="flex h-full min-h-0 min-w-0">
                 <section
-                  className="flex min-h-0 min-w-0 flex-col border-r"
+                  className={
+                    editorGroupsState.activeGroupId === "primary"
+                      ? "flex min-h-0 min-w-0 flex-col border-r ring-1 ring-border"
+                      : "flex min-h-0 min-w-0 flex-col border-r"
+                  }
                   style={{
                     width: `${editorGroupsState.primaryGroupWidthPercent}%`,
                   }}
+                  onMouseDown={() => {
+                    if (editorGroupsState.activeGroupId !== "primary") {
+                      activateEditorGroup("primary");
+                    }
+                  }}
                 >
-                  <button
-                    type="button"
-                    className="bg-muted/20 hover:bg-muted/30 flex h-7 items-center justify-between border-b px-2 text-xs"
-                    onClick={() => {
-                      setActiveEditorGroup("primary");
-                    }}
-                  >
-                    <span>Group 1</span>
-                    {editorGroupsState.activeGroupId === "primary" ? (
-                      <span className="text-muted-foreground">Active</span>
-                    ) : null}
-                  </button>
                   <div className="min-h-0 min-w-0 flex-1">
-                    {editorGroupsState.activeGroupId === "primary" ? (
-                      <Outlet />
-                    ) : (
-                      <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
-                        Group 1 is ready. Select this group to move the active
-                        route here.
-                      </div>
-                    )}
+                    <WorkbenchPaneScopeProvider scopeId="primary">
+                      {primaryPanePathname ? (
+                        <WorkbenchRouteHost pathname={primaryPanePathname} />
+                      ) : (
+                        <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
+                          Pane 1 ready: {editorGroupsState.primaryGroupTitle}
+                        </div>
+                      )}
+                    </WorkbenchPaneScopeProvider>
                   </div>
                 </section>
 
@@ -517,34 +841,36 @@ export default function Layout() {
                   onMouseDown={handleEditorGroupResizeStart}
                 />
 
-                <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-                  <button
-                    type="button"
-                    className="bg-muted/20 hover:bg-muted/30 flex h-7 items-center justify-between border-b px-2 text-xs"
-                    onClick={() => {
-                      setActiveEditorGroup("secondary");
-                    }}
-                  >
-                    <span>Group 2</span>
-                    {editorGroupsState.activeGroupId === "secondary" ? (
-                      <span className="text-muted-foreground">Active</span>
-                    ) : null}
-                  </button>
+                <section
+                  className={
+                    editorGroupsState.activeGroupId === "secondary"
+                      ? "flex min-h-0 min-w-0 flex-1 flex-col ring-1 ring-border"
+                      : "flex min-h-0 min-w-0 flex-1 flex-col"
+                  }
+                  onMouseDown={() => {
+                    if (editorGroupsState.activeGroupId !== "secondary") {
+                      activateEditorGroup("secondary");
+                    }
+                  }}
+                >
                   <div className="min-h-0 min-w-0 flex-1">
-                    {editorGroupsState.activeGroupId === "secondary" ? (
-                      <Outlet />
-                    ) : (
-                      <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
-                        Group 2 is ready. Select this group to move the active
-                        route here.
-                      </div>
-                    )}
+                    <WorkbenchPaneScopeProvider scopeId="secondary">
+                      {secondaryPanePathname ? (
+                        <WorkbenchRouteHost pathname={secondaryPanePathname} />
+                      ) : (
+                        <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
+                          Pane 2 ready: {editorGroupsState.secondaryGroupTitle}
+                        </div>
+                      )}
+                    </WorkbenchPaneScopeProvider>
                   </div>
                 </section>
               </div>
             ) : (
               <div className="min-h-0 min-w-0 h-full">
-                <Outlet />
+                <WorkbenchPaneScopeProvider scopeId="primary">
+                  <Outlet />
+                </WorkbenchPaneScopeProvider>
               </div>
             )}
           </div>

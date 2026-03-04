@@ -6,111 +6,31 @@ import { recordRouteTimingSample } from "@/lib/route-timing-diagnostics";
 import { runScheduledNoteLinkProcessingIfDue } from "@/lib/note-linking-queue";
 import {
   getLikelyNextRoutes,
-  loadAssistantPage,
-  loadCalendarPage,
-  loadBrowserPage,
-  loadCompaniesPage,
-  loadDashboardPage,
   loadDrawingEmbedPage,
-  loadDrawingsPage,
-  loadGraphPage,
-  loadMeetingsPage,
-  loadNotesPage,
-  loadObjectsPage,
-  loadObjectTypesPage,
-  loadPeoplePage,
-  loadProjectsPage,
-  loadTasksPage,
   prefetchRouteModule,
 } from "@/routes/route-module-loaders";
+import { WorkbenchRouteElement } from "@/routes/workbench-route-definitions";
+import { WORKBENCH_ROUTE_DEFINITIONS } from "@/routes/workbench-route-config";
 import { lazy, Suspense, useEffect, useRef } from "react";
 
-const DashboardPage = lazy(() =>
-  loadDashboardPage().then((module) => ({
-    default: module.DashboardPage,
-  })),
-);
-const NotesPage = lazy(() =>
-  loadNotesPage().then((module) => ({
-    default: module.NotesPage,
-  })),
-);
-const DrawingsPage = lazy(() =>
-  loadDrawingsPage().then((module) => ({
-    default: module.DrawingsPage,
-  })),
-);
-const BrowserPage = lazy(() =>
-  loadBrowserPage().then((module) => ({
-    default: module.BrowserPage,
-  })),
-);
-const TasksPage = lazy(() =>
-  loadTasksPage().then((module) => ({
-    default: module.TasksPage,
-  })),
-);
-const MeetingsPage = lazy(() =>
-  loadMeetingsPage().then((module) => ({
-    default: module.MeetingsPage,
-  })),
-);
-const CalendarPage = lazy(() =>
-  loadCalendarPage().then((module) => ({
-    default: module.CalendarPage,
-  })),
-);
-const ProjectsPage = lazy(() =>
-  loadProjectsPage().then((module) => ({
-    default: module.ProjectsPage,
-  })),
-);
-const CompaniesPage = lazy(() =>
-  loadCompaniesPage().then((module) => ({
-    default: module.CompaniesPage,
-  })),
-);
-const PeoplePage = lazy(() =>
-  loadPeoplePage().then((module) => ({
-    default: module.PeoplePage,
-  })),
-);
-const ObjectTypesPage = lazy(() =>
-  loadObjectTypesPage().then((module) => ({
-    default: module.ObjectTypesPage,
-  })),
-);
-const ObjectsPage = lazy(() =>
-  loadObjectsPage().then((module) => ({
-    default: module.ObjectsPage,
-  })),
-);
-const GraphPage = lazy(() =>
-  loadGraphPage().then((module) => ({
-    default: module.GraphPage,
-  })),
-);
-const AssistantPage = lazy(() =>
-  loadAssistantPage().then((module) => ({
-    default: module.AssistantPage,
-  })),
-);
 const DrawingEmbedPage = lazy(() =>
   loadDrawingEmbedPage().then((module) => ({
     default: module.DrawingEmbedPage,
   })),
 );
 
-function RouteLoadingFallback() {
-  return (
-    <section className="p-6">
-      <p className="text-muted-foreground text-sm">Loading...</p>
-    </section>
-  );
-}
-
 function withRouteSuspense(element: React.ReactNode) {
-  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+  return (
+    <Suspense
+      fallback={
+        <section className="p-6">
+          <p className="text-muted-foreground text-sm">Loading...</p>
+        </section>
+      }
+    >
+      {element}
+    </Suspense>
+  );
 }
 
 function App() {
@@ -222,48 +142,13 @@ function App() {
         />
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route
-            path="dashboard"
-            element={withRouteSuspense(<DashboardPage />)}
-          />
-          <Route path="notes" element={withRouteSuspense(<NotesPage />)} />
-          <Route
-            path="drawings"
-            element={withRouteSuspense(<DrawingsPage />)}
-          />
-          <Route
-            path="drawings/:drawingId"
-            element={withRouteSuspense(<DrawingsPage />)}
-          />
-          <Route path="browser" element={withRouteSuspense(<BrowserPage />)} />
-          <Route path="tasks" element={withRouteSuspense(<TasksPage />)} />
-          <Route
-            path="meetings"
-            element={withRouteSuspense(<MeetingsPage />)}
-          />
-          <Route
-            path="calendar"
-            element={withRouteSuspense(<CalendarPage />)}
-          />
-          <Route
-            path="projects"
-            element={withRouteSuspense(<ProjectsPage />)}
-          />
-          <Route
-            path="companies"
-            element={withRouteSuspense(<CompaniesPage />)}
-          />
-          <Route path="people" element={withRouteSuspense(<PeoplePage />)} />
-          <Route
-            path="object-types"
-            element={withRouteSuspense(<ObjectTypesPage />)}
-          />
-          <Route path="objects" element={withRouteSuspense(<ObjectsPage />)} />
-          <Route path="graph" element={withRouteSuspense(<GraphPage />)} />
-          <Route
-            path="assistant"
-            element={withRouteSuspense(<AssistantPage />)}
-          />
+          {WORKBENCH_ROUTE_DEFINITIONS.map((route) => (
+            <Route
+              key={route.path}
+              path={route.path}
+              element={<WorkbenchRouteElement route={route} />}
+            />
+          ))}
         </Route>
       </Routes>
     </ThemeProvider>

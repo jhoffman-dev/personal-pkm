@@ -4,10 +4,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 describe("notes state facade", () => {
   beforeEach(() => {
-    useNotesTabsStore.setState({
-      openTabIds: [],
-      activeTabId: null,
-    });
+    notesTabsFacade.setActiveScope("primary");
+    notesTabsFacade.clearTabs("primary");
+    notesTabsFacade.clearTabs("secondary");
   });
 
   it("opens note tab and activates by default", () => {
@@ -32,5 +31,24 @@ describe("notes state facade", () => {
     state = useNotesTabsStore.getState();
     expect(state.openTabIds).toEqual(["n1"]);
     expect(state.activeTabId).toBe("n1");
+  });
+
+  it("keeps tab state isolated by pane scope", () => {
+    notesTabsFacade.setActiveScope("primary");
+    notesTabsFacade.openNoteTab({ id: "p1" });
+
+    notesTabsFacade.setActiveScope("secondary");
+    notesTabsFacade.openNoteTab({ id: "s1" });
+
+    let state = useNotesTabsStore.getState();
+    expect(state.openTabIds).toEqual(["s1"]);
+    expect(state.activeTabId).toBe("s1");
+    expect(state.scopeStates.primary?.openTabIds).toEqual(["p1"]);
+    expect(state.scopeStates.secondary?.openTabIds).toEqual(["s1"]);
+
+    notesTabsFacade.setActiveScope("primary");
+    state = useNotesTabsStore.getState();
+    expect(state.openTabIds).toEqual(["p1"]);
+    expect(state.activeTabId).toBe("p1");
   });
 });

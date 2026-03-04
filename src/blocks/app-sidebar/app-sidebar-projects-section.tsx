@@ -1,5 +1,9 @@
 import type { ParaType } from "@/data/entities";
 import { PARA_TYPES, PARA_TYPE_LABELS } from "@/lib/project-defaults";
+import {
+  getSidebarOpenTargetFromModifierKeys,
+  type AppSidebarOpenTarget,
+} from "@/blocks/app-sidebar/app-sidebar-open-target";
 import { ChevronDown } from "lucide-react";
 import {
   SidebarGroup,
@@ -11,7 +15,10 @@ import * as React from "react";
 export function AppSidebarProjectsSection(params: {
   projectsByPara: Record<ParaType, Array<{ id: string; name: string }>>;
   selectedProjectId: string | null;
-  onSelectProject: (projectId: string) => void;
+  onSelectProject: (
+    projectId: string,
+    openTarget: AppSidebarOpenTarget,
+  ) => void;
 }) {
   const { projectsByPara, selectedProjectId, onSelectProject } = params;
   const [expandedProjectSections, setExpandedProjectSections] = React.useState<
@@ -74,8 +81,22 @@ export function AppSidebarProjectsSection(params: {
                               ? "bg-sidebar-accent"
                               : ""
                           }`}
-                          onClick={() => {
-                            onSelectProject(project.id);
+                          onClick={(event) => {
+                            onSelectProject(
+                              project.id,
+                              getSidebarOpenTargetFromModifierKeys({
+                                altKey: event.altKey,
+                                metaKey: event.metaKey,
+                                ctrlKey: event.ctrlKey,
+                              }),
+                            );
+                          }}
+                          onAuxClick={(event) => {
+                            if (event.button !== 1) {
+                              return;
+                            }
+
+                            onSelectProject(project.id, "active-pane-new-tab");
                           }}
                         >
                           {project.name}

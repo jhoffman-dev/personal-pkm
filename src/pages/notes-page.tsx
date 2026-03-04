@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SystemCustomPropertiesPanel } from "@/components/system-custom-properties-panel";
 import { WorkbenchTabstrip } from "@/components/workbench-tabstrip";
+import { useWorkbenchPaneScopeId } from "@/lib/use-workbench-pane-scope-id";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 import { firebaseAuth } from "@/lib/firebase";
 import { migrateEmbeddedNoteImagesToStorage } from "@/lib/note-images-storage";
@@ -83,8 +84,10 @@ function getTagColorStyle(tag: string): CSSProperties {
 
 export function NotesPage() {
   const dispatch = useAppDispatch();
+  const notesTabScopeId = useWorkbenchPaneScopeId();
   const { notesState, setSelectedNoteId } = useNotesEntityStateFacade();
   const {
+    activeScopeId,
     openTabIds,
     activeTabId,
     openNoteTab,
@@ -92,7 +95,7 @@ export function NotesPage() {
     replaceActiveTab,
     closeNoteTab,
     setOpenTabs,
-  } = useNotesTabsFacade();
+  } = useNotesTabsFacade(notesTabScopeId);
   const { projectsState } = useProjectsStateFacade();
   const { tasksState } = useTasksEntityStateFacade();
   const { meetingsState } = useMeetingsStateFacade();
@@ -136,13 +139,12 @@ export function NotesPage() {
       isActive: activeTabId === note.id,
       onSelect: () => {
         setActiveTab(note.id);
-        setSelectedNoteId(note.id);
       },
       onClose: () => {
         closeNoteTab(note.id);
       },
     }));
-  }, [activeTabId, closeNoteTab, openTabs, setActiveTab, setSelectedNoteId]);
+  }, [activeTabId, closeNoteTab, openTabs, setActiveTab]);
 
   const [draftBody, setDraftBody] = useState(DEFAULT_NOTE_BODY);
   const [draftTitle, setDraftTitle] = useState(DEFAULT_NOTE_TITLE);
@@ -393,10 +395,20 @@ export function NotesPage() {
   ]);
 
   useEffect(() => {
+    if (notesTabScopeId !== activeScopeId) {
+      return;
+    }
+
     if (activeTabId !== notesState.selectedId) {
       setSelectedNoteId(activeTabId);
     }
-  }, [activeTabId, notesState.selectedId, setSelectedNoteId]);
+  }, [
+    activeScopeId,
+    activeTabId,
+    notesState.selectedId,
+    notesTabScopeId,
+    setSelectedNoteId,
+  ]);
 
   useEffect(() => {
     if (selectedNote?.id === hydratedNoteIdRef.current) {

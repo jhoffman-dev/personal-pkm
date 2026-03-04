@@ -14,22 +14,24 @@ Keep a single, durable list of open and deferred tasks so work does not get lost
 
 ## Active Priority Tasks (Layout)
 
-| ID    | Task                                                                                                                                                                                                 | Source                                                                                      | Status      | Priority | Suggested GitHub issue title                         | GitHub issue |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------- | -------- | ---------------------------------------------------- | ------------ |
-| WB-01 | Complete Phase 1 sign-off decisions (region map, app bar controls, right sidebar behavior, bottom panel behavior, split/tile model, keyboard contract, persistence reset behavior, mobile fallback). | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 1 sign-off checklist) | In progress | P0       | Workbench: complete Phase 1 shell sign-off decisions | TBD          |
-| WB-02 | Execute Phase 2 typography and contrast token pass for shell readability.                                                                                                                            | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 2)                    | Not started | P0       | Workbench: apply typography and contrast foundation  | TBD          |
-| WB-03 | Implement integrated window tabstrip spike (initial component and placement in center workbench).                                                                                                    | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 5 prep)               | In progress | P1       | Workbench: add integrated tabstrip baseline          | TBD          |
-| WB-04 | Implement initial tiled editor group support.                                                                                                                                                        | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 5)                    | In progress | P1       | Workbench: add initial tiled editor groups           | TBD          |
-| WB-05 | Harmonize core pages with shell spacing/container rules.                                                                                                                                             | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 8)                    | Not started | P1       | Workbench: harmonize page layouts with shell         | TBD          |
-| WB-06 | Run full UX and regression validation pass (keyboard, persistence, responsive behavior, lint/test/manual smoke).                                                                                     | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 9)                    | Not started | P1       | Workbench: run final UX and regression validation    | TBD          |
+| ID    | Task                                                                                                                                                                                                    | Source                                                                                               | Status      | Priority | Suggested GitHub issue title                            | GitHub issue |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------- | -------- | ------------------------------------------------------- | ------------ |
+| WB-01 | Complete Phase 1 sign-off decisions (region map, app bar controls, right sidebar behavior, bottom panel behavior, split/tile model, keyboard contract, persistence reset behavior, mobile fallback).    | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 1 sign-off checklist)          | In progress | P0       | Workbench: complete Phase 1 shell sign-off decisions    | TBD          |
+| WB-07 | Define and implement sidebar interaction contract for tiled workbench flow (rail intent, contextual inner sidebar, and explicit open-in-pane/tab actions) to replace implicit route-overwrite behavior. | User workflow feedback (2026-03-04) + [workbench-redesign-tracker.md](workbench-redesign-tracker.md) | In progress | P0       | Workbench: redesign sidebar-to-editor interaction model | TBD          |
+| WB-02 | Execute Phase 2 typography and contrast token pass for shell readability.                                                                                                                               | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 2)                             | Not started | P0       | Workbench: apply typography and contrast foundation     | TBD          |
+| WB-03 | Implement integrated window tabstrip spike (initial component and placement in center workbench).                                                                                                       | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 5 prep)                        | In progress | P1       | Workbench: add integrated tabstrip baseline             | TBD          |
+| WB-04 | Implement initial tiled editor group support.                                                                                                                                                           | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 5)                             | In progress | P1       | Workbench: add initial tiled editor groups              | TBD          |
+| WB-05 | Harmonize core pages with shell spacing/container rules.                                                                                                                                                | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 8)                             | Not started | P1       | Workbench: harmonize page layouts with shell            | TBD          |
+| WB-06 | Run full UX and regression validation pass (keyboard, persistence, responsive behavior, lint/test/manual smoke).                                                                                        | [workbench-redesign-tracker.md](workbench-redesign-tracker.md) (Phase 9)                             | Not started | P1       | Workbench: run final UX and regression validation       | TBD          |
 
 ## Deferred Follow-ups (Not Current Priority)
 
-| ID    | Task                                                                                                                                                  | Source                                                                                                     | Why deferred now                                        | Resume trigger                           | Suggested GitHub issue title                             | GitHub issue |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------- | ------------ |
-| DF-01 | Bridge Electron main-process and backend/server logs into the bottom `Output` panel via `preload` + IPC, then merge into the renderer runtime stream. | Session note (2026-03-04)                                                                                  | Layout work is higher priority right now.               | Start after layout milestones stabilize. | Output panel: ingest Electron main/backend logs via IPC  | TBD          |
-| DF-02 | Add notes image-ingest workflow for remote `http/https` image URLs, upload to Firebase Storage, and rewrite note HTML `img[src]` to first-party URLs. | [codebase-cleanup-tracker.md](codebase-cleanup-tracker.md) (Notes section, deferred product follow-up)     | Outside the completed Redux migration scope.            | Resume after layout MVP stabilization.   | Notes: import and rewrite remote image URLs              | TBD          |
-| DF-03 | Refactor `objects-page-field-drafts` to remove targeted `react-hooks/set-state-in-effect` suppression with an effect-free draft hydration pattern.    | [codebase-cleanup-tracker.md](codebase-cleanup-tracker.md) (Notes section, deferred code-health follow-up) | Deferred until after migration and shell stabilization. | Resume after layout MVP stabilization.   | Objects: remove effect-based draft hydration suppression | TBD          |
+| ID    | Task                                                                                                                                                                     | Source                                                                                                     | Why deferred now                                                                       | Resume trigger                                                   | Suggested GitHub issue title                                          | GitHub issue |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- | ------------ |
+| DF-01 | Bridge Electron main-process and backend/server logs into the bottom `Output` panel via `preload` + IPC, then merge into the renderer runtime stream.                    | Session note (2026-03-04)                                                                                  | Layout work is higher priority right now.                                              | Start after layout milestones stabilize.                         | Output panel: ingest Electron main/backend logs via IPC               | TBD          |
+| DF-02 | Add notes image-ingest workflow for remote `http/https` image URLs, upload to Firebase Storage, and rewrite note HTML `img[src]` to first-party URLs.                    | [codebase-cleanup-tracker.md](codebase-cleanup-tracker.md) (Notes section, deferred product follow-up)     | Outside the completed Redux migration scope.                                           | Resume after layout MVP stabilization.                           | Notes: import and rewrite remote image URLs                           | TBD          |
+| DF-03 | Refactor `objects-page-field-drafts` to remove targeted `react-hooks/set-state-in-effect` suppression with an effect-free draft hydration pattern.                       | [codebase-cleanup-tracker.md](codebase-cleanup-tracker.md) (Notes section, deferred code-health follow-up) | Deferred until after migration and shell stabilization.                                | Resume after layout MVP stabilization.                           | Objects: remove effect-based draft hydration suppression              | TBD          |
+| DF-04 | Integrate object-type-specific custom sidebars into the unified workbench inner-sidebar model so those object workflows remain accessible under rail-context navigation. | User workflow note (2026-03-04)                                                                            | Requires broader sidebar architecture rework; deferred to protect WB-07 stabilization. | Resume after WB-07 behavior stabilizes and sign-off is complete. | Workbench: unify object-type custom sidebars with inner sidebar model | TBD          |
 
 ## GitHub Issue Sync Plan
 
@@ -74,6 +76,41 @@ Complete and document Phase 1 shell sign-off decisions for the workbench redesig
 
 - [ ] All Phase 1 sign-off checklist items are explicitly marked approved or adjusted in tracker.
 - [ ] Any scope changes are reflected in docs/architecture/workbench-redesign-tracker.md.
+```
+
+### WB-07 — Workbench: redesign sidebar-to-editor interaction model
+
+Suggested labels: `workbench`, `ux`, `planning`, `priority:P0`
+
+```md
+## Summary
+
+Redesign left-rail/sidebar interactions so split-workbench behavior matches editor-style workflows (VS Code/Obsidian-like): rail selects context, inner sidebar offers targets, and user chooses explicit open destination.
+
+## Source
+
+- Backlog ID: WB-07
+- Source note: user workflow feedback on 2026-03-04
+- Tracker: docs/architecture/workbench-redesign-tracker.md
+
+## Scope
+
+- [ ] Finalize shell state model (`activeRailModeId`, per-mode inner sidebar state memory, `activeOpenTarget`)
+- [ ] Define left rail intent semantics (context switch vs immediate editor navigation)
+- [ ] Define contextual inner sidebar responsibilities for each rail mode
+- [ ] Define explicit open actions (`replace in active pane`, `open in other pane`, `open as tab in active pane`)
+- [ ] Define single-pane auto-split behavior for `open in other pane`
+- [ ] Define split-pane route memory behavior for cross-feature switches
+- [ ] Define migration path from current route-click behavior with minimal regressions
+
+## Acceptance Criteria
+
+- [ ] Navigation intent model is documented and signed off before implementation.
+- [ ] Rail click is non-destructive (no implicit pane content replacement).
+- [ ] Inner sidebar supports explicit open actions for active/other/tab destinations.
+- [ ] Existing split foundations (pane scope/tab isolation) remain stable through rollout.
+- [ ] Deep links and direct route navigation remain backward compatible.
+- [ ] Manual split workflow smoke checks pass across Notes + Tasks + at least one additional feature.
 ```
 
 ### WB-02 — Workbench: apply typography and contrast foundation
@@ -321,3 +358,33 @@ Deferred until post-migration and shell stabilization.
 - Resume trigger:
 - Suggested GitHub issue title:
 - GitHub issue:
+
+## User Intake Queue (Relevance-Aware)
+
+Use this section for items you want remembered and surfaced when they are contextually relevant during active development.
+
+### Copilot Relevance Protocol
+
+When a new implementation request comes in, Copilot should:
+
+1. Identify the active work area tags (for example: `sidebar`, `app-bar`, `notes`, `bottom-panel`, `wb-07`).
+2. Scan this queue for items with overlapping tags.
+3. Propose only matching items with `Suggest when` = `now` or `soon` and state `queued`/`needs-verify`.
+4. On approval, promote the item to an active backlog row (`WB-*`/`DF-*`) or mark as implemented.
+
+### Queue Format
+
+| ID    | Item                                                                                                                 | Tags (for relevance matching)                          | Suggest when | Candidate track | Blocked by                       | State        |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------ | --------------- | -------------------------------- | ------------ |
+| UI-01 | Window next to the left sidebar runs off the screen and needs horizontal scroll to view content.                     | `layout`, `sidebar`, `responsive`, `workbench-shell`   | now          | WB-01 / WB-05   | none                             | queued       |
+| UI-02 | `Ctrl/Cmd+Click` on entity rows in left sidebar should open in a new tab (for example People).                       | `sidebar`, `open-target`, `tabs`, `wb-07`              | now          | WB-07           | none                             | needs-verify |
+| UI-03 | Selected tile indicator causes search bar to shift based on label length.                                            | `app-bar`, `split-indicator`, `layout-stability`       | soon         | WB-04           | none                             | queued       |
+| UI-04 | App bar is not full width; appears constrained beside side rail/inner sidebar.                                       | `app-bar`, `workbench-shell`, `layout`                 | now          | WB-01 / WB-04   | none                             | queued       |
+| UI-05 | Remove Route Timing button from app bar (already available in bottom bar).                                           | `app-bar`, `bottom-panel`, `cleanup`                   | soon         | WB-01           | none                             | queued       |
+| UI-06 | "Delete same title" should not ship in production UX; move to dev tools area in bottom bar.                          | `notes`, `dev-tools`, `bottom-panel`, `product-polish` | later        | WB-05 / DF      | notes UX stabilization           | queued       |
+| UI-07 | Move "Delete note" action to bottom properties area as "Delete Note" and add right-click delete option in note list. | `notes`, `properties`, `context-menu`, `sidebar`       | later        | WB-05 / DF      | properties placement decision    | queued       |
+| UI-08 | Move properties panel into a bottom bar tab instead of per-tile screen area.                                         | `notes`, `properties`, `bottom-panel`, `layout`        | later        | WB-05 / Phase 7 | bottom panel tab model expansion | queued       |
+
+### Quick Add Row Template
+
+`| UI-XX | <item> | <tag1>, <tag2>, <tag3> | now/soon/later | <WB-## or DF> | <blocker or none> | queued |`

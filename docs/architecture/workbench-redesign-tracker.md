@@ -71,6 +71,34 @@ Create a cohesive workbench shell that combines:
       - `Cmd/Ctrl+Alt+B`: toggle right sidebar
       - `Cmd/Ctrl+J`: toggle bottom panel
       - `Cmd/Ctrl+\\`: split active editor group (phase 5)
+    - **Sidebar interaction contract v1 (WB-07 draft)**
+      - **Intent model**
+        - Left rail click selects a `rail mode` (domain context), not an editor route.
+        - Inner sidebar item click executes an explicit `open action`.
+        - Open actions are: `replace in active pane`, `open in other pane`, `open as tab in active pane`.
+      - **State model (shell-level)**
+        - `activeRailModeId: string` — currently selected left-rail mode.
+        - `railModeStateById: Record<string, { selectedItemId: string | null; query: string; expandedGroups: string[] }>` — per-mode inner sidebar state memory.
+        - `activeOpenTarget: "active-pane" | "other-pane" | "active-pane-new-tab"` — default action for click/enter interactions.
+        - Existing `editorGroupsState` remains source of truth for split and active pane identity.
+        - Existing per-pane hidden route/tab memory remains source of truth for route restoration.
+      - **Interaction rules (v1)**
+        - Rail click updates `activeRailModeId` and shows contextual inner sidebar content; it must not rewrite center pane route by itself.
+        - Inner sidebar primary action uses `activeOpenTarget` and always resolves an explicit destination pane.
+        - `open in other pane` in single-pane mode auto-enables split and opens destination in secondary pane.
+        - `open as tab in active pane` appends to active pane tab memory and focuses new tab content.
+        - Pane focus and open-target defaults remain independent of rail mode switches.
+        - Back/forward navigation applies to the active pane history only; it must not mutate inactive pane content.
+      - **Fallback and compatibility rules**
+        - If an item type has no dedicated editor route yet, inner sidebar action no-ops with user feedback rather than mutating pane state.
+        - Existing route deep links remain valid and still hydrate active pane route on direct navigation.
+      - **WB-07 contract acceptance checklist (implementation gate)**
+        - [ ] Rail click is non-destructive (no implicit pane content replacement).
+        - [ ] Inner sidebar supports explicit open actions for active/other/tab destinations.
+        - [ ] Single-pane to split auto-promotion for `open in other pane` is defined and implemented.
+        - [ ] Active pane identity, pane-scoped tabs, and selected-note isolation remain stable.
+        - [ ] Deep links and direct route navigation remain backward compatible.
+        - [ ] Manual split workflow smoke checks pass across Notes + Tasks + at least one additional feature.
   - Checklist:
     - [x] Define target regions and composition contract
     - [x] Define interaction/resize/persistence model
@@ -197,12 +225,26 @@ Create a cohesive workbench shell that combines:
 - 2026-03-04: Started integrated tabstrip baseline by adding reusable `WorkbenchTabstrip` and migrating notes tab rendering in `src/pages/notes-page.tsx` to the shared component for cleaner shell-consistent tabs.
 - 2026-03-04: Continued integrated tabstrip rollout by removing Notes page floating card framing and switching `src/pages/notes-page.tsx` to a full-height shell-aligned container using `WorkbenchTabstrip` as the top workbench row.
 - 2026-03-04: Started tiled-group scaffold in `src/blocks/app-sidebar/layout.tsx` by adding persisted two-group split state, draggable center splitter, active-group routing host behavior, and `Cmd/Ctrl+\\` / app-bar layout toggle wiring.
+- 2026-03-04: Expanded tiled-group behavior in `src/blocks/app-sidebar/layout.tsx` with per-group route/title memory, focus actions that restore the group's last route, and split-pane header affordances using `WorkbenchTabstrip`.
+- 2026-03-04: Added per-group tab-history semantics in `src/blocks/app-sidebar/layout.tsx` by persisting route-tab lists per pane and making split-pane tab headers route-selectable for each group.
+- 2026-03-04: Simplified split-pane UX in `src/blocks/app-sidebar/layout.tsx` by removing per-pane tab-history headers and restoring low-overhead click-to-focus pane activation with retained per-pane route memory; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Reintroduced hidden per-pane tab memory in `src/blocks/app-sidebar/layout.tsx` (persisted/hydrated route-tab lists per split group with no visible tab chrome) so pane focus can restore routes based on each group's underlying open-tab history; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Implemented true dual-pane route hosting by rendering real route content in both split panes via a shared workbench route catalog (`src/routes/workbench-route-config.ts`, `src/routes/workbench-route-definitions.tsx`) and wiring `src/App.tsx` + `src/blocks/app-sidebar/layout.tsx` to the same route definitions; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Fixed split-pane Notes tab mirroring by introducing pane-scoped notes tab state (primary/secondary scope maps in `src/features/notes/state/notes-tabs-store.ts`), binding Notes page tab facade usage to pane scope context, and syncing active pane scope in `src/blocks/app-sidebar/layout.tsx`; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Fixed Notes runtime loop in split mode (black-screen/maximum update depth) by making global selected-note synchronization run only from the active pane scope in `src/pages/notes-page.tsx`; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Captured split-navigation workflow gap: left-rail route clicks currently replace active pane content directly, which conflicts with the target VS Code/Obsidian-style model (rail selects context, inner sidebar drives explicit open-in-pane/tab actions). Added as a high-priority backlog task to avoid destabilizing current split-host foundations while the interaction contract is redesigned.
+- 2026-03-04: Drafted `WB-07` sidebar interaction contract v1 in this tracker (intent model, shell state model, interaction/fallback rules, and implementation gate checklist) so upcoming changes can proceed via explicit acceptance criteria instead of ad-hoc behavior tweaks.
+- 2026-03-04: Implemented first `WB-07` interaction slice: left rail clicks are now context-only (no implicit route navigation), and Notes/Tasks inner sidebar clicks now support explicit open targets (`replace active pane`, `open in other pane` via Alt/Option, `open as tab in active pane` via Cmd/Ctrl). Wiring added from sidebar into layout pane-routing logic with auto-split on `open in other pane`; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Implemented second `WB-07` interaction slice by extending explicit open-target actions to Meetings, Projects, Companies, and People sidebar item clicks (same modifier contract as Notes/Tasks) while preserving rail context-only behavior and layout-level pane routing; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Added lightweight open-target visibility in sidebar header (`Destination: Active/Other/New tab`) with live modifier-key awareness in `src/blocks/app-sidebar/app-sidebar.tsx` to improve discoverability of WB-07 click behavior; regression validation passed (`npm run lint && npm run test`).
+- 2026-03-04: Logged object-type custom-sidebar accessibility gap as deferred follow-up (`DF-04`) to be addressed after WB-07 stabilization, avoiding high-risk sidebar architecture churn during current interaction-model rollout.
 
 ## Immediate Next Actions
 
 1. Confirm Phase 1 sign-off checklist items and lock remaining scope boundaries.
-2. Start Phase 2 typography/contrast pass once Phase 1 sign-off is complete.
-3. Expand tiled-group behavior beyond scaffold (per-group tab semantics, active-pane affordances, and route-host UX refinements).
+2. Review and sign off `WB-07` sidebar interaction contract v1 (rail intent, inner sidebar responsibilities, explicit open targets, and split-pane routing semantics).
+3. Start Phase 2 typography/contrast pass once interaction and shell sign-off boundaries are locked.
+4. Continue tiled-group maturation with pane-identity polish and manual UX validation on dual-host navigation behavior.
 
 ## Cross-Tracker Task Register
 
