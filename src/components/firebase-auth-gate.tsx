@@ -92,7 +92,7 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
   }, [dispatch, isDrawingEmbedRoute]);
 
   if (isDrawingEmbedRoute) {
-    return <div className="h-svh">{children}</div>;
+    return <div className="h-svh overflow-hidden">{children}</div>;
   }
 
   const loginWithGoogle = async () => {
@@ -228,5 +228,5 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return <div className="h-svh">{children}</div>;
+  return <div className="h-svh overflow-hidden">{children}</div>;
 }

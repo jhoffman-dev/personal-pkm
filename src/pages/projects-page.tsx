@@ -6,6 +6,8 @@ import {
   PropertyLinkPicker,
   type PropertyOption,
 } from "@/components/property-link-picker";
+import { useWorkbenchBottomPanelContext } from "@/lib/workbench-bottom-panel";
+import { useWorkbenchPaneScopeId } from "@/lib/use-workbench-pane-scope-id";
 import type { ParaType } from "@/data/entities";
 import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import {
@@ -33,6 +35,7 @@ import {
 import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
 import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function DashboardListCard({
@@ -78,6 +81,13 @@ function DashboardListCard({
 
 export function ProjectsPage() {
   const dispatch = useAppDispatch();
+  const workbenchPaneScopeId = useWorkbenchPaneScopeId();
+  const {
+    activeBottomPanelView,
+    isBottomPanelOpen,
+    activePaneScopeId,
+    propertiesHostElement,
+  } = useWorkbenchBottomPanelContext();
   const { projectsState, setSelectedProjectId } = useProjectsStateFacade();
   const { tasksState } = useTasksEntityStateFacade();
   const { notesState } = useNotesEntityStateFacade();
@@ -160,6 +170,10 @@ export function ProjectsPage() {
   const selectedProject = projectsState.selectedId
     ? projectsState.entities[projectsState.selectedId]
     : null;
+  const shouldRenderPropertiesPortal =
+    workbenchPaneScopeId === activePaneScopeId &&
+    isBottomPanelOpen &&
+    activeBottomPanelView === "properties";
 
   useEffect(() => {
     if (selectedProject?.id === hydratedProjectIdRef.current) {
@@ -605,187 +619,206 @@ export function ProjectsPage() {
             )}
           </div>
 
-          <aside className="border-l bg-muted/10 h-full w-80 shrink-0 space-y-5 overflow-y-auto p-4">
-            <div>
-              <h3 className="text-base font-semibold">Properties</h3>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Metadata and linked records for this item.
-              </p>
-            </div>
-
-            {!selectedProject ? (
-              <p className="text-muted-foreground text-sm">
-                Select a project to edit its properties.
-              </p>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Name</h4>
-                  <Input
-                    value={draftName}
-                    onChange={(event) => setDraftName(event.target.value)}
-                    placeholder="Project name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Description</h4>
-                  <textarea
-                    value={draftDescription}
-                    onChange={(event) =>
-                      setDraftDescription(event.target.value)
-                    }
-                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                    placeholder="Describe this project, area, resource, or archive item"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Tags</h4>
-                  <div className="flex gap-2">
-                    <Input
-                      value={tagInput}
-                      onChange={(event) => setTagInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addTag();
-                        }
-                      }}
-                      placeholder="Add tag"
-                      list="shared-tag-suggestions-projects"
-                    />
-                    <Button type="button" variant="outline" onClick={addTag}>
-                      Add
-                    </Button>
+          {shouldRenderPropertiesPortal && propertiesHostElement
+            ? createPortal(
+                <div className="bg-muted/10 h-full min-h-0 space-y-5 overflow-y-auto p-4">
+                  <div>
+                    <h3 className="text-base font-semibold">Properties</h3>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Metadata and linked records for this item.
+                    </p>
                   </div>
-                  <datalist id="shared-tag-suggestions-projects">
-                    {sharedTagSuggestions.map((tag) => (
-                      <option key={tag} value={tag} />
-                    ))}
-                  </datalist>
-                  <div className="flex flex-wrap gap-2">
-                    {draftTags.length === 0 ? (
-                      <p className="text-muted-foreground text-xs">No tags.</p>
-                    ) : (
-                      draftTags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-                        >
-                          {tag}
-                          <button
-                            type="button"
-                            className="hover:text-foreground text-muted-foreground"
-                            onClick={() => {
-                              setDraftTags((previous) =>
-                                previous.filter((value) => value !== tag),
-                              );
+
+                  {!selectedProject ? (
+                    <p className="text-muted-foreground text-sm">
+                      Select a project to edit its properties.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold">Name</h4>
+                        <Input
+                          value={draftName}
+                          onChange={(event) => setDraftName(event.target.value)}
+                          placeholder="Project name"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold">Description</h4>
+                        <textarea
+                          value={draftDescription}
+                          onChange={(event) =>
+                            setDraftDescription(event.target.value)
+                          }
+                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                          placeholder="Describe this project, area, resource, or archive item"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold">Tags</h4>
+                        <div className="flex gap-2">
+                          <Input
+                            value={tagInput}
+                            onChange={(event) =>
+                              setTagInput(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                addTag();
+                              }
                             }}
-                            aria-label={`Remove ${tag} tag`}
+                            placeholder="Add tag"
+                            list="shared-tag-suggestions-projects"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={addTag}
                           >
-                            <X className="size-3" />
-                          </button>
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
+                            Add
+                          </Button>
+                        </div>
+                        <datalist id="shared-tag-suggestions-projects">
+                          {sharedTagSuggestions.map((tag) => (
+                            <option key={tag} value={tag} />
+                          ))}
+                        </datalist>
+                        <div className="flex flex-wrap gap-2">
+                          {draftTags.length === 0 ? (
+                            <p className="text-muted-foreground text-xs">
+                              No tags.
+                            </p>
+                          ) : (
+                            draftTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
+                              >
+                                {tag}
+                                <button
+                                  type="button"
+                                  className="hover:text-foreground text-muted-foreground"
+                                  onClick={() => {
+                                    setDraftTags((previous) =>
+                                      previous.filter((value) => value !== tag),
+                                    );
+                                  }}
+                                  aria-label={`Remove ${tag} tag`}
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
 
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">PARA Type</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {PARA_TYPES.map((type) => (
-                      <Button
-                        key={type}
-                        type="button"
-                        variant={draftParaType === type ? "default" : "outline"}
-                        onClick={() => setDraftParaType(type)}
-                      >
-                        {PARA_TYPE_LABELS[type]}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold">PARA Type</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {PARA_TYPES.map((type) => (
+                            <Button
+                              key={type}
+                              type="button"
+                              variant={
+                                draftParaType === type ? "default" : "outline"
+                              }
+                              onClick={() => setDraftParaType(type)}
+                            >
+                              {PARA_TYPE_LABELS[type]}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
 
-                <PropertyLinkPicker
-                  title="Tasks"
-                  options={taskOptions}
-                  selectedIds={draftTaskIds}
-                  onAdd={(id) => setDraftTaskIds((prev) => addUnique(prev, id))}
-                  onRemove={(id) =>
-                    setDraftTaskIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    )
-                  }
-                  onCreateOption={createQuickTask}
-                />
+                      <PropertyLinkPicker
+                        title="Tasks"
+                        options={taskOptions}
+                        selectedIds={draftTaskIds}
+                        onAdd={(id) =>
+                          setDraftTaskIds((prev) => addUnique(prev, id))
+                        }
+                        onRemove={(id) =>
+                          setDraftTaskIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          )
+                        }
+                        onCreateOption={createQuickTask}
+                      />
 
-                <PropertyLinkPicker
-                  title="Notes"
-                  options={noteOptions}
-                  selectedIds={draftNoteIds}
-                  onAdd={(id) => setDraftNoteIds((prev) => addUnique(prev, id))}
-                  onRemove={(id) =>
-                    setDraftNoteIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    )
-                  }
-                  onCreateOption={createQuickNote}
-                />
+                      <PropertyLinkPicker
+                        title="Notes"
+                        options={noteOptions}
+                        selectedIds={draftNoteIds}
+                        onAdd={(id) =>
+                          setDraftNoteIds((prev) => addUnique(prev, id))
+                        }
+                        onRemove={(id) =>
+                          setDraftNoteIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          )
+                        }
+                        onCreateOption={createQuickNote}
+                      />
 
-                <PropertyLinkPicker
-                  title="Meetings"
-                  options={meetingOptions}
-                  selectedIds={draftMeetingIds}
-                  onAdd={(id) =>
-                    setDraftMeetingIds((prev) => addUnique(prev, id))
-                  }
-                  onRemove={(id) =>
-                    setDraftMeetingIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    )
-                  }
-                  onCreateOption={createQuickMeeting}
-                />
+                      <PropertyLinkPicker
+                        title="Meetings"
+                        options={meetingOptions}
+                        selectedIds={draftMeetingIds}
+                        onAdd={(id) =>
+                          setDraftMeetingIds((prev) => addUnique(prev, id))
+                        }
+                        onRemove={(id) =>
+                          setDraftMeetingIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          )
+                        }
+                        onCreateOption={createQuickMeeting}
+                      />
 
-                <PropertyLinkPicker
-                  title="People"
-                  options={peopleOptions}
-                  selectedIds={draftPersonIds}
-                  onAdd={(id) =>
-                    setDraftPersonIds((prev) => addUnique(prev, id))
-                  }
-                  onRemove={(id) =>
-                    setDraftPersonIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    )
-                  }
-                  onCreateOption={createQuickPerson}
-                />
+                      <PropertyLinkPicker
+                        title="People"
+                        options={peopleOptions}
+                        selectedIds={draftPersonIds}
+                        onAdd={(id) =>
+                          setDraftPersonIds((prev) => addUnique(prev, id))
+                        }
+                        onRemove={(id) =>
+                          setDraftPersonIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          )
+                        }
+                        onCreateOption={createQuickPerson}
+                      />
 
-                <PropertyLinkPicker
-                  title="Companies"
-                  options={companyOptions}
-                  selectedIds={draftCompanyIds}
-                  onAdd={(id) =>
-                    setDraftCompanyIds((prev) => addUnique(prev, id))
-                  }
-                  onRemove={(id) =>
-                    setDraftCompanyIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    )
-                  }
-                  onCreateOption={createQuickCompany}
-                />
+                      <PropertyLinkPicker
+                        title="Companies"
+                        options={companyOptions}
+                        selectedIds={draftCompanyIds}
+                        onAdd={(id) =>
+                          setDraftCompanyIds((prev) => addUnique(prev, id))
+                        }
+                        onRemove={(id) =>
+                          setDraftCompanyIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          )
+                        }
+                        onCreateOption={createQuickCompany}
+                      />
 
-                <SystemCustomPropertiesPanel
-                  objectTypeId="object_type_projects"
-                  recordId={selectedProject?.id ?? null}
-                />
-              </>
-            )}
-          </aside>
+                      <SystemCustomPropertiesPanel
+                        objectTypeId="object_type_projects"
+                        recordId={selectedProject?.id ?? null}
+                      />
+                    </>
+                  )}
+                </div>,
+                propertiesHostElement,
+              )
+            : null}
         </CardContent>
       </Card>
     </section>

@@ -10,6 +10,7 @@ import * as React from "react";
 import { useLocation } from "react-router-dom";
 import { getRouteTitle, isRouteActive, navItems } from "@/routes/navigation";
 import { useAppDispatch } from "@/store";
+import { cn } from "@/lib/utils";
 import {
   companiesStateFacade,
   useCompaniesStateFacade,
@@ -19,6 +20,9 @@ import {
   useMeetingsStateFacade,
 } from "@/features/meetings";
 import {
+  buildDeleteCurrentNotePlan,
+  notesDataRuntime,
+  runNoteDeleteWorkflow,
   notesTabsFacade,
   notesEntityStateFacade,
   useNotesEntityStateFacade,
@@ -65,6 +69,7 @@ function getInitialRailRoute(pathname: string): string {
 
 export function AppSidebar({
   onOpenWorkbenchRoute,
+  className,
   ...props
 }: AppSidebarProps) {
   const dispatch = useAppDispatch();
@@ -83,6 +88,7 @@ export function AppSidebar({
   );
   const [currentOpenTarget, setCurrentOpenTarget] =
     React.useState<AppSidebarOpenTarget>("active-pane");
+  const [isDeletingNotes, setIsDeletingNotes] = React.useState(false);
   const activeTitle = getRouteTitle(activeRailRoute);
   const isNotesRoute = isRouteActive(activeRailRoute, "/notes");
   const isTasksRoute = isRouteActive(activeRailRoute, "/tasks");
@@ -216,6 +222,30 @@ export function AppSidebar({
     onOpenWorkbenchRoute("/tasks", openTarget);
   };
 
+  const handleDeleteNoteFromSidebar = async (noteId: string) => {
+    const noteToDelete = notesState.entities[noteId];
+    const plan = buildDeleteCurrentNotePlan(
+      noteToDelete
+        ? {
+            id: noteToDelete.id,
+            title: noteToDelete.title,
+          }
+        : null,
+    );
+
+    await runNoteDeleteWorkflow({
+      isDeleting: isDeletingNotes,
+      plan,
+      confirm: (message) => window.confirm(message),
+      deleteByIds: async (noteIds) => {
+        await Promise.all(
+          noteIds.map((id) => notesDataRuntime.deleteOne(dispatch, id)),
+        );
+      },
+      setIsDeleting: setIsDeletingNotes,
+    });
+  };
+
   const handleCreateMeeting = () => {
     void createMeeting();
   };
@@ -263,7 +293,10 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      className={cn(
+        "overflow-hidden *:data-[sidebar=sidebar]:flex-row",
+        className,
+      )}
       {...props}
     >
       {/* ----------------- */}
@@ -296,6 +329,7 @@ export function AppSidebar({
               notes={sortedNotes}
               activeTabId={activeTabId}
               onSelectNote={handleSelectNote}
+              onDeleteNote={handleDeleteNoteFromSidebar}
             />
           ) : isTasksRoute ? (
             <AppSidebarTasksSection

@@ -6,6 +6,8 @@ import {
   PropertyLinkPicker,
   type PropertyOption,
 } from "@/components/property-link-picker";
+import { useWorkbenchBottomPanelContext } from "@/lib/workbench-bottom-panel";
+import { useWorkbenchPaneScopeId } from "@/lib/use-workbench-pane-scope-id";
 import {
   Sheet,
   SheetContent,
@@ -69,10 +71,18 @@ import {
 import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor";
 import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 
 export function TasksPage() {
   const dispatch = useAppDispatch();
+  const workbenchPaneScopeId = useWorkbenchPaneScopeId();
+  const {
+    activeBottomPanelView,
+    isBottomPanelOpen,
+    activePaneScopeId,
+    propertiesHostElement,
+  } = useWorkbenchBottomPanelContext();
   const { tasksState } = useTasksEntityStateFacade();
   const { notesState } = useNotesEntityStateFacade();
   const { projectsState } = useProjectsStateFacade();
@@ -153,6 +163,10 @@ export function TasksPage() {
   const expandedTask = expandedTaskId
     ? tasksState.entities[expandedTaskId]
     : null;
+  const shouldRenderPropertiesPortal =
+    workbenchPaneScopeId === activePaneScopeId &&
+    isBottomPanelOpen &&
+    activeBottomPanelView === "properties";
 
   const linkedNoteOptions = useMemo(
     () =>
@@ -709,8 +723,8 @@ export function TasksPage() {
   return (
     <section className="h-[calc(100svh-41px)] p-6">
       <Card className="h-full py-0">
-        <CardContent className="grid h-full min-h-0 grid-cols-[1fr_20rem] gap-0 p-0">
-          <div className="min-h-0 overflow-y-auto p-4 space-y-4">
+        <CardContent className="flex h-full min-h-0 flex-col p-0">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
             <div className="flex gap-2">
               <Input
                 value={newStoryTitle}
@@ -766,275 +780,304 @@ export function TasksPage() {
             ))}
           </div>
 
-          <aside className="border-l bg-muted/10 min-h-0 overflow-y-auto p-4 space-y-3">
-            <h3 className="text-sm font-semibold">Task Details</h3>
-            {!expandedTask ? (
-              <p className="text-muted-foreground text-xs">
-                Click a task to expand details and settings.
-              </p>
-            ) : (
-              <>
-                <Input
-                  value={detailsTitle}
-                  onChange={(event) => setDetailsTitle(event.target.value)}
-                  placeholder="Task title"
-                />
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">State</label>
-                  <select
-                    value={detailsStatus}
-                    onChange={(event) =>
-                      setDetailsStatus(event.target.value as TaskStatus)
-                    }
-                    className="border rounded-md bg-background w-full px-2 py-2 text-sm"
-                  >
-                    {TASK_STATES.map((status) => (
-                      <option key={status} value={status}>
-                        {TASK_STATE_LABELS[status]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Due date</label>
-                  <Input
-                    type="date"
-                    value={detailsDueDate}
-                    onChange={(event) => setDetailsDueDate(event.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2 border rounded-md p-2">
-                  <label className="text-xs font-medium">Timeblock</label>
-                  <input
-                    type="datetime-local"
-                    value={detailsTimeblockStart}
-                    onChange={(event) =>
-                      setDetailsTimeblockStart(event.target.value)
-                    }
-                    className="border rounded-md bg-background w-full px-2 py-2 text-sm"
-                  />
-                  <input
-                    type="datetime-local"
-                    value={detailsTimeblockEnd}
-                    onChange={(event) =>
-                      setDetailsTimeblockEnd(event.target.value)
-                    }
-                    className="border rounded-md bg-background w-full px-2 py-2 text-sm"
-                  />
-                  <div className="text-muted-foreground text-[11px]">
-                    Default duration:{" "}
-                    {loadAppSettings().taskTimeblockDefaultMinutes}m
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Description</label>
-                  <textarea
-                    className="border rounded-md bg-background min-h-20 w-full px-3 py-2 text-sm"
-                    value={detailsDescription}
-                    onChange={(event) =>
-                      setDetailsDescription(event.target.value)
-                    }
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Tags</label>
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
+          {shouldRenderPropertiesPortal && propertiesHostElement
+            ? createPortal(
+                <div className="bg-muted/10 h-full min-h-0 overflow-y-auto p-4 space-y-3">
+                  <h3 className="text-sm font-semibold">Task Details</h3>
+                  {!expandedTask ? (
+                    <p className="text-muted-foreground text-xs">
+                      Click a task to expand details and settings.
+                    </p>
+                  ) : (
+                    <>
                       <Input
-                        value={tagInput}
-                        onChange={(event) => setTagInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            addTag();
-                          }
-                        }}
-                        placeholder="Add tag"
-                        list="shared-tag-suggestions-tasks"
+                        value={detailsTitle}
+                        onChange={(event) =>
+                          setDetailsTitle(event.target.value)
+                        }
+                        placeholder="Task title"
                       />
-                      <Button type="button" variant="outline" onClick={addTag}>
-                        Add
-                      </Button>
-                    </div>
-                    <datalist id="shared-tag-suggestions-tasks">
-                      {sharedTagSuggestions.map((tag) => (
-                        <option key={tag} value={tag} />
-                      ))}
-                    </datalist>
-                    <div className="flex flex-wrap gap-1">
-                      {detailsTags.length === 0 ? (
-                        <p className="text-muted-foreground text-xs">
-                          No tags.
-                        </p>
-                      ) : (
-                        detailsTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
-                          >
-                            {tag}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDetailsTags((previous) =>
-                                  previous.filter((value) => value !== tag),
-                                );
-                              }}
-                              className="text-muted-foreground hover:text-foreground"
-                              aria-label={`Remove ${tag} tag`}
-                            >
-                              <X className="size-3" />
-                            </button>
-                          </span>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Main note</label>
-                  <div className="border rounded-md bg-background p-2 space-y-2">
-                    <p className="text-xs font-medium truncate">
-                      {mainNote?.title || detailsTitle || "Task note"}
-                    </p>
-                    <p className="text-muted-foreground text-xs line-clamp-3 min-h-10">
-                      {mainNote
-                        ? stripHtml(mainNote.body)
-                        : "No note content yet."}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        void (async () => {
-                          const noteId = await ensureMainNote();
-                          if (noteId) {
-                            setMainNoteSheetOpen(true);
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">State</label>
+                        <select
+                          value={detailsStatus}
+                          onChange={(event) =>
+                            setDetailsStatus(event.target.value as TaskStatus)
                           }
-                        })();
-                      }}
-                      disabled={isEnsuringMainNote || !expandedTask}
-                    >
-                      {isEnsuringMainNote
-                        ? "Preparing note..."
-                        : "Open note editor"}
-                    </Button>
-                  </div>
-                </div>
+                          className="border rounded-md bg-background w-full px-2 py-2 text-sm"
+                        >
+                          {TASK_STATES.map((status) => (
+                            <option key={status} value={status}>
+                              {TASK_STATE_LABELS[status]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Linked notes</label>
-                  <PropertyLinkPicker
-                    title="Linked notes"
-                    options={linkedNotePropertyOptions}
-                    selectedIds={detailsNoteIds}
-                    onAdd={(id) => {
-                      setDetailsNoteIds((prev) => addUnique(prev, id));
-                    }}
-                    onRemove={(id) => {
-                      if (id === mainNoteId) {
-                        return;
-                      }
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Due date</label>
+                        <Input
+                          type="date"
+                          value={detailsDueDate}
+                          onChange={(event) =>
+                            setDetailsDueDate(event.target.value)
+                          }
+                        />
+                      </div>
 
-                      setDetailsNoteIds((prev) =>
-                        prev.filter((value) => value !== id),
-                      );
-                    }}
-                    onCreateOption={createQuickNote}
-                    searchPlaceholder="Search notes..."
-                  />
-                </div>
+                      <div className="space-y-2 border rounded-md p-2">
+                        <label className="text-xs font-medium">Timeblock</label>
+                        <input
+                          type="datetime-local"
+                          value={detailsTimeblockStart}
+                          onChange={(event) =>
+                            setDetailsTimeblockStart(event.target.value)
+                          }
+                          className="border rounded-md bg-background w-full px-2 py-2 text-sm"
+                        />
+                        <input
+                          type="datetime-local"
+                          value={detailsTimeblockEnd}
+                          onChange={(event) =>
+                            setDetailsTimeblockEnd(event.target.value)
+                          }
+                          className="border rounded-md bg-background w-full px-2 py-2 text-sm"
+                        />
+                        <div className="text-muted-foreground text-[11px]">
+                          Default duration:{" "}
+                          {loadAppSettings().taskTimeblockDefaultMinutes}m
+                        </div>
+                      </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Project links</label>
-                  <PropertyLinkPicker
-                    title="Projects"
-                    options={projectOptions}
-                    selectedIds={detailsProjectIds}
-                    onAdd={(id) => {
-                      setDetailsProjectIds((prev) => addUnique(prev, id));
-                    }}
-                    onRemove={(id) => {
-                      setDetailsProjectIds((prev) =>
-                        prev.filter((value) => value !== id),
-                      );
-                    }}
-                    onCreateOption={createQuickProject}
-                    searchPlaceholder="Search projects..."
-                  />
-                </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">
+                          Description
+                        </label>
+                        <textarea
+                          className="border rounded-md bg-background min-h-20 w-full px-3 py-2 text-sm"
+                          value={detailsDescription}
+                          onChange={(event) =>
+                            setDetailsDescription(event.target.value)
+                          }
+                        />
+                      </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">People links</label>
-                  <PropertyLinkPicker
-                    title="People"
-                    options={peopleOptions}
-                    selectedIds={detailsPersonIds}
-                    onAdd={(id) => {
-                      setDetailsPersonIds((prev) => addUnique(prev, id));
-                    }}
-                    onRemove={(id) => {
-                      setDetailsPersonIds((prev) =>
-                        prev.filter((value) => value !== id),
-                      );
-                    }}
-                    onCreateOption={createQuickPerson}
-                    searchPlaceholder="Search people..."
-                  />
-                </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Tags</label>
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <Input
+                              value={tagInput}
+                              onChange={(event) =>
+                                setTagInput(event.target.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  addTag();
+                                }
+                              }}
+                              placeholder="Add tag"
+                              list="shared-tag-suggestions-tasks"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={addTag}
+                            >
+                              Add
+                            </Button>
+                          </div>
+                          <datalist id="shared-tag-suggestions-tasks">
+                            {sharedTagSuggestions.map((tag) => (
+                              <option key={tag} value={tag} />
+                            ))}
+                          </datalist>
+                          <div className="flex flex-wrap gap-1">
+                            {detailsTags.length === 0 ? (
+                              <p className="text-muted-foreground text-xs">
+                                No tags.
+                              </p>
+                            ) : (
+                              detailsTags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                                >
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDetailsTags((previous) =>
+                                        previous.filter(
+                                          (value) => value !== tag,
+                                        ),
+                                      );
+                                    }}
+                                    className="text-muted-foreground hover:text-foreground"
+                                    aria-label={`Remove ${tag} tag`}
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Company links</label>
-                  <PropertyLinkPicker
-                    title="Companies"
-                    options={companyOptions}
-                    selectedIds={detailsCompanyIds}
-                    onAdd={(id) => {
-                      setDetailsCompanyIds((prev) => addUnique(prev, id));
-                    }}
-                    onRemove={(id) => {
-                      setDetailsCompanyIds((prev) =>
-                        prev.filter((value) => value !== id),
-                      );
-                    }}
-                    onCreateOption={createQuickCompany}
-                    searchPlaceholder="Search companies..."
-                  />
-                </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Main note</label>
+                        <div className="border rounded-md bg-background p-2 space-y-2">
+                          <p className="text-xs font-medium truncate">
+                            {mainNote?.title || detailsTitle || "Task note"}
+                          </p>
+                          <p className="text-muted-foreground text-xs line-clamp-3 min-h-10">
+                            {mainNote
+                              ? stripHtml(mainNote.body)
+                              : "No note content yet."}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              void (async () => {
+                                const noteId = await ensureMainNote();
+                                if (noteId) {
+                                  setMainNoteSheetOpen(true);
+                                }
+                              })();
+                            }}
+                            disabled={isEnsuringMainNote || !expandedTask}
+                          >
+                            {isEnsuringMainNote
+                              ? "Preparing note..."
+                              : "Open note editor"}
+                          </Button>
+                        </div>
+                      </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Meeting links</label>
-                  <PropertyLinkPicker
-                    title="Meetings"
-                    options={meetingOptions}
-                    selectedIds={detailsMeetingIds}
-                    onAdd={(id) => {
-                      setDetailsMeetingIds((prev) => addUnique(prev, id));
-                    }}
-                    onRemove={(id) => {
-                      setDetailsMeetingIds((prev) =>
-                        prev.filter((value) => value !== id),
-                      );
-                    }}
-                    onCreateOption={createQuickMeeting}
-                    searchPlaceholder="Search meetings..."
-                  />
-                </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">
+                          Linked notes
+                        </label>
+                        <PropertyLinkPicker
+                          title="Linked notes"
+                          options={linkedNotePropertyOptions}
+                          selectedIds={detailsNoteIds}
+                          onAdd={(id) => {
+                            setDetailsNoteIds((prev) => addUnique(prev, id));
+                          }}
+                          onRemove={(id) => {
+                            if (id === mainNoteId) {
+                              return;
+                            }
 
-                <SystemCustomPropertiesPanel
-                  objectTypeId="object_type_tasks"
-                  recordId={expandedTask?.id ?? null}
-                />
-              </>
-            )}
-          </aside>
+                            setDetailsNoteIds((prev) =>
+                              prev.filter((value) => value !== id),
+                            );
+                          }}
+                          onCreateOption={createQuickNote}
+                          searchPlaceholder="Search notes..."
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">
+                          Project links
+                        </label>
+                        <PropertyLinkPicker
+                          title="Projects"
+                          options={projectOptions}
+                          selectedIds={detailsProjectIds}
+                          onAdd={(id) => {
+                            setDetailsProjectIds((prev) => addUnique(prev, id));
+                          }}
+                          onRemove={(id) => {
+                            setDetailsProjectIds((prev) =>
+                              prev.filter((value) => value !== id),
+                            );
+                          }}
+                          onCreateOption={createQuickProject}
+                          searchPlaceholder="Search projects..."
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">
+                          People links
+                        </label>
+                        <PropertyLinkPicker
+                          title="People"
+                          options={peopleOptions}
+                          selectedIds={detailsPersonIds}
+                          onAdd={(id) => {
+                            setDetailsPersonIds((prev) => addUnique(prev, id));
+                          }}
+                          onRemove={(id) => {
+                            setDetailsPersonIds((prev) =>
+                              prev.filter((value) => value !== id),
+                            );
+                          }}
+                          onCreateOption={createQuickPerson}
+                          searchPlaceholder="Search people..."
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">
+                          Company links
+                        </label>
+                        <PropertyLinkPicker
+                          title="Companies"
+                          options={companyOptions}
+                          selectedIds={detailsCompanyIds}
+                          onAdd={(id) => {
+                            setDetailsCompanyIds((prev) => addUnique(prev, id));
+                          }}
+                          onRemove={(id) => {
+                            setDetailsCompanyIds((prev) =>
+                              prev.filter((value) => value !== id),
+                            );
+                          }}
+                          onCreateOption={createQuickCompany}
+                          searchPlaceholder="Search companies..."
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">
+                          Meeting links
+                        </label>
+                        <PropertyLinkPicker
+                          title="Meetings"
+                          options={meetingOptions}
+                          selectedIds={detailsMeetingIds}
+                          onAdd={(id) => {
+                            setDetailsMeetingIds((prev) => addUnique(prev, id));
+                          }}
+                          onRemove={(id) => {
+                            setDetailsMeetingIds((prev) =>
+                              prev.filter((value) => value !== id),
+                            );
+                          }}
+                          onCreateOption={createQuickMeeting}
+                          searchPlaceholder="Search meetings..."
+                        />
+                      </div>
+
+                      <SystemCustomPropertiesPanel
+                        objectTypeId="object_type_tasks"
+                        recordId={expandedTask?.id ?? null}
+                      />
+                    </>
+                  )}
+                </div>,
+                propertiesHostElement,
+              )
+            : null}
 
           <Sheet open={mainNoteSheetOpen} onOpenChange={setMainNoteSheetOpen}>
             <SheetContent side="right" className="w-[92vw] sm:max-w-5xl p-0">

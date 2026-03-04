@@ -6,6 +6,8 @@ import {
   PropertyLinkPicker,
   type PropertyOption,
 } from "@/components/property-link-picker";
+import { useWorkbenchBottomPanelContext } from "@/lib/workbench-bottom-panel";
+import { useWorkbenchPaneScopeId } from "@/lib/use-workbench-pane-scope-id";
 import { useEntityQuickCreate } from "@/hooks/use-entity-quick-create";
 import { useSharedTagSuggestions } from "@/hooks/use-shared-tag-suggestions";
 import {
@@ -26,6 +28,7 @@ import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
 import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function toDateTimeLocalValue(isoDateString: string): string {
@@ -59,6 +62,13 @@ function fromDateTimeLocalValue(value: string): string {
 
 export function MeetingsPage() {
   const dispatch = useAppDispatch();
+  const workbenchPaneScopeId = useWorkbenchPaneScopeId();
+  const {
+    activeBottomPanelView,
+    isBottomPanelOpen,
+    activePaneScopeId,
+    propertiesHostElement,
+  } = useWorkbenchBottomPanelContext();
   const { meetingsState, setSelectedMeetingId } = useMeetingsStateFacade();
   const { peopleState } = usePeopleStateFacade();
   const { companiesState } = useCompaniesStateFacade();
@@ -158,6 +168,10 @@ export function MeetingsPage() {
   const selectedMeeting = meetingsState.selectedId
     ? meetingsState.entities[meetingsState.selectedId]
     : null;
+  const shouldRenderPropertiesPortal =
+    workbenchPaneScopeId === activePaneScopeId &&
+    isBottomPanelOpen &&
+    activeBottomPanelView === "properties";
 
   useEffect(() => {
     if (selectedMeeting?.id === hydratedMeetingIdRef.current) {
@@ -431,154 +445,167 @@ export function MeetingsPage() {
             )}
           </div>
 
-          <aside className="border-l bg-muted/10 h-full w-80 shrink-0 space-y-5 overflow-y-auto p-4">
-            <div>
-              <h3 className="text-base font-semibold">Properties</h3>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Links, tags, and related records for this meeting.
-              </p>
-            </div>
-
-            {!selectedMeeting ? (
-              <p className="text-muted-foreground text-sm">
-                Select a meeting to edit its properties.
-              </p>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Tags</h4>
-                  <div className="flex gap-2">
-                    <Input
-                      value={tagInput}
-                      onChange={(event) => setTagInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addTag();
-                        }
-                      }}
-                      placeholder="Add tag"
-                      list="shared-tag-suggestions-meetings"
-                    />
-                    <Button type="button" variant="outline" onClick={addTag}>
-                      Add
-                    </Button>
+          {shouldRenderPropertiesPortal && propertiesHostElement
+            ? createPortal(
+                <div className="bg-muted/10 h-full min-h-0 space-y-5 overflow-y-auto p-4">
+                  <div>
+                    <h3 className="text-base font-semibold">Properties</h3>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Links, tags, and related records for this meeting.
+                    </p>
                   </div>
-                  <datalist id="shared-tag-suggestions-meetings">
-                    {sharedTagSuggestions.map((tag) => (
-                      <option key={tag} value={tag} />
-                    ))}
-                  </datalist>
-                  <div className="flex flex-wrap gap-2">
-                    {draftTags.length === 0 ? (
-                      <p className="text-muted-foreground text-xs">No tags.</p>
-                    ) : (
-                      draftTags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-                        >
-                          {tag}
-                          <button
-                            type="button"
-                            className="hover:text-foreground text-muted-foreground"
-                            onClick={() => {
-                              setDraftTags((previous) =>
-                                previous.filter((value) => value !== tag),
-                              );
+
+                  {!selectedMeeting ? (
+                    <p className="text-muted-foreground text-sm">
+                      Select a meeting to edit its properties.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold">Tags</h4>
+                        <div className="flex gap-2">
+                          <Input
+                            value={tagInput}
+                            onChange={(event) =>
+                              setTagInput(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                addTag();
+                              }
                             }}
-                            aria-label={`Remove ${tag} tag`}
+                            placeholder="Add tag"
+                            list="shared-tag-suggestions-meetings"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={addTag}
                           >
-                            <X className="size-3" />
-                          </button>
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
+                            Add
+                          </Button>
+                        </div>
+                        <datalist id="shared-tag-suggestions-meetings">
+                          {sharedTagSuggestions.map((tag) => (
+                            <option key={tag} value={tag} />
+                          ))}
+                        </datalist>
+                        <div className="flex flex-wrap gap-2">
+                          {draftTags.length === 0 ? (
+                            <p className="text-muted-foreground text-xs">
+                              No tags.
+                            </p>
+                          ) : (
+                            draftTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
+                              >
+                                {tag}
+                                <button
+                                  type="button"
+                                  className="hover:text-foreground text-muted-foreground"
+                                  onClick={() => {
+                                    setDraftTags((previous) =>
+                                      previous.filter((value) => value !== tag),
+                                    );
+                                  }}
+                                  aria-label={`Remove ${tag} tag`}
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
 
-                <PropertyLinkPicker
-                  title="People"
-                  options={peopleOptions}
-                  selectedIds={draftPersonIds}
-                  onAdd={(id) => {
-                    setDraftPersonIds((prev) => addUnique(prev, id));
-                  }}
-                  onRemove={(id) => {
-                    setDraftPersonIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    );
-                  }}
-                  onCreateOption={createQuickPerson}
-                />
+                      <PropertyLinkPicker
+                        title="People"
+                        options={peopleOptions}
+                        selectedIds={draftPersonIds}
+                        onAdd={(id) => {
+                          setDraftPersonIds((prev) => addUnique(prev, id));
+                        }}
+                        onRemove={(id) => {
+                          setDraftPersonIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          );
+                        }}
+                        onCreateOption={createQuickPerson}
+                      />
 
-                <PropertyLinkPicker
-                  title="Companies"
-                  options={companyOptions}
-                  selectedIds={draftCompanyIds}
-                  onAdd={(id) => {
-                    setDraftCompanyIds((prev) => addUnique(prev, id));
-                  }}
-                  onRemove={(id) => {
-                    setDraftCompanyIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    );
-                  }}
-                  onCreateOption={createQuickCompany}
-                />
+                      <PropertyLinkPicker
+                        title="Companies"
+                        options={companyOptions}
+                        selectedIds={draftCompanyIds}
+                        onAdd={(id) => {
+                          setDraftCompanyIds((prev) => addUnique(prev, id));
+                        }}
+                        onRemove={(id) => {
+                          setDraftCompanyIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          );
+                        }}
+                        onCreateOption={createQuickCompany}
+                      />
 
-                <PropertyLinkPicker
-                  title="Projects"
-                  options={projectOptions}
-                  selectedIds={draftProjectIds}
-                  onAdd={(id) => {
-                    setDraftProjectIds((prev) => addUnique(prev, id));
-                  }}
-                  onRemove={(id) => {
-                    setDraftProjectIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    );
-                  }}
-                  onCreateOption={createQuickProject}
-                />
+                      <PropertyLinkPicker
+                        title="Projects"
+                        options={projectOptions}
+                        selectedIds={draftProjectIds}
+                        onAdd={(id) => {
+                          setDraftProjectIds((prev) => addUnique(prev, id));
+                        }}
+                        onRemove={(id) => {
+                          setDraftProjectIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          );
+                        }}
+                        onCreateOption={createQuickProject}
+                      />
 
-                <PropertyLinkPicker
-                  title="Notes"
-                  options={noteOptions}
-                  selectedIds={draftNoteIds}
-                  onAdd={(id) => {
-                    setDraftNoteIds((prev) => addUnique(prev, id));
-                  }}
-                  onRemove={(id) => {
-                    setDraftNoteIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    );
-                  }}
-                  onCreateOption={createQuickNote}
-                />
+                      <PropertyLinkPicker
+                        title="Notes"
+                        options={noteOptions}
+                        selectedIds={draftNoteIds}
+                        onAdd={(id) => {
+                          setDraftNoteIds((prev) => addUnique(prev, id));
+                        }}
+                        onRemove={(id) => {
+                          setDraftNoteIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          );
+                        }}
+                        onCreateOption={createQuickNote}
+                      />
 
-                <PropertyLinkPicker
-                  title="Tasks"
-                  options={taskOptions}
-                  selectedIds={draftTaskIds}
-                  onAdd={(id) => {
-                    setDraftTaskIds((prev) => addUnique(prev, id));
-                  }}
-                  onRemove={(id) => {
-                    setDraftTaskIds((prev) =>
-                      prev.filter((value) => value !== id),
-                    );
-                  }}
-                  onCreateOption={createQuickTask}
-                />
+                      <PropertyLinkPicker
+                        title="Tasks"
+                        options={taskOptions}
+                        selectedIds={draftTaskIds}
+                        onAdd={(id) => {
+                          setDraftTaskIds((prev) => addUnique(prev, id));
+                        }}
+                        onRemove={(id) => {
+                          setDraftTaskIds((prev) =>
+                            prev.filter((value) => value !== id),
+                          );
+                        }}
+                        onCreateOption={createQuickTask}
+                      />
 
-                <SystemCustomPropertiesPanel
-                  objectTypeId="object_type_meetings"
-                  recordId={selectedMeeting?.id ?? null}
-                />
-              </>
-            )}
-          </aside>
+                      <SystemCustomPropertiesPanel
+                        objectTypeId="object_type_meetings"
+                        recordId={selectedMeeting?.id ?? null}
+                      />
+                    </>
+                  )}
+                </div>,
+                propertiesHostElement,
+              )
+            : null}
         </CardContent>
       </Card>
     </section>

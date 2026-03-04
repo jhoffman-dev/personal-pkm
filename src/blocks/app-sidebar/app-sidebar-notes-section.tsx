@@ -16,8 +16,9 @@ export function AppSidebarNotesSection(params: {
   notes: Array<{ id: string; title: string }>;
   activeTabId: string | null;
   onSelectNote: (noteId: string, openTarget: AppSidebarOpenTarget) => void;
+  onDeleteNote: (noteId: string) => void | Promise<void>;
 }) {
-  const { notes, activeTabId, onSelectNote } = params;
+  const { notes, activeTabId, onSelectNote, onDeleteNote } = params;
 
   return (
     <SidebarGroup>
@@ -49,6 +50,10 @@ export function AppSidebarNotesSection(params: {
                     }
 
                     onSelectNote(note.id, "active-pane-new-tab");
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    void onDeleteNote(note.id);
                   }}
                 >
                   <span>{note.title || DEFAULT_NOTE_TITLE}</span>

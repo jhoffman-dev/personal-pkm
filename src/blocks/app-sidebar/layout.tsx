@@ -4,12 +4,17 @@ import { AppSidebarAssistantSection } from "@/blocks/app-sidebar/app-sidebar-ass
 import { useAppSidebarAssistantState } from "@/blocks/app-sidebar/app-sidebar-assistant-state";
 import { type AppSidebarOpenTarget } from "@/blocks/app-sidebar/app-sidebar-open-target";
 import { AppBar } from "@/components/app-bar";
+import { DevNotesToolsPanel } from "@/components/dev-notes-tools-panel";
 import { DevOutputPanel } from "@/components/dev-output-panel";
 import { DevRouteTimingPanel } from "@/components/dev-route-timing-panel";
 import { Button } from "@/components/ui/button";
 import { WorkbenchPaneScopeProvider } from "@/lib/workbench-pane-scope";
+import {
+  WorkbenchBottomPanelContext,
+  type WorkbenchBottomPanelView,
+} from "@/lib/workbench-bottom-panel";
 import { createEmptyNoteInput } from "@/lib/note-defaults";
-import { getRouteTitle } from "@/routes/navigation";
+import { getRouteTitle, isRouteActive } from "@/routes/navigation";
 import { prefetchRouteModule } from "@/routes/route-module-loaders";
 import { WorkbenchRouteHost } from "@/routes/workbench-route-definitions";
 import { useAppDispatch } from "@/store";
@@ -34,7 +39,6 @@ const WORKBENCH_BOTTOM_PANEL_VIEW_STORAGE_KEY =
   "pkm.workbench.bottom-panel-view.v1";
 const WORKBENCH_EDITOR_GROUPS_STORAGE_KEY = "pkm.workbench.editor-groups.v1";
 
-type BottomPanelView = "route-timing" | "output";
 type EditorGroupId = "primary" | "secondary";
 
 interface EditorGroupRouteTab {
@@ -42,7 +46,7 @@ interface EditorGroupRouteTab {
   title: string;
 }
 
-const DEFAULT_BOTTOM_PANEL_VIEW: BottomPanelView = "route-timing";
+const DEFAULT_BOTTOM_PANEL_VIEW: WorkbenchBottomPanelView = "route-timing";
 
 interface EditorGroupsState {
   isSplitLayout: boolean;
@@ -221,7 +225,7 @@ function loadPersistedBoolean(storageKey: string, fallback: boolean): boolean {
   }
 }
 
-function loadPersistedBottomPanelView(): BottomPanelView {
+function loadPersistedBottomPanelView(): WorkbenchBottomPanelView {
   if (typeof window === "undefined") {
     return DEFAULT_BOTTOM_PANEL_VIEW;
   }
@@ -235,9 +239,19 @@ function loadPersistedBottomPanelView(): BottomPanelView {
 
   try {
     const parsed = JSON.parse(raw);
-    return parsed === "route-timing" || parsed === "output"
-      ? parsed
-      : DEFAULT_BOTTOM_PANEL_VIEW;
+    if (
+      parsed === "route-timing" ||
+      parsed === "output" ||
+      parsed === "properties"
+    ) {
+      return parsed;
+    }
+
+    if (parsed === "dev-tools" && import.meta.env.DEV) {
+      return parsed;
+    }
+
+    return DEFAULT_BOTTOM_PANEL_VIEW;
   } catch {
     return DEFAULT_BOTTOM_PANEL_VIEW;
   }
@@ -364,7 +378,9 @@ export default function Layout() {
     loadPersistedBoolean(WORKBENCH_BOTTOM_PANEL_STORAGE_KEY, false),
   );
   const [activeBottomPanelView, setActiveBottomPanelView] =
-    useState<BottomPanelView>(() => loadPersistedBottomPanelView());
+    useState<WorkbenchBottomPanelView>(() => loadPersistedBottomPanelView());
+  const [propertiesHostElement, setPropertiesHostElement] =
+    useState<HTMLDivElement | null>(null);
   const [workbenchLayoutState, setWorkbenchLayoutState] =
     useState<WorkbenchLayoutState>(() => loadWorkbenchLayoutState());
   const [editorGroupsState, setEditorGroupsState] = useState<EditorGroupsState>(
@@ -784,208 +800,284 @@ export default function Layout() {
   const secondaryPanePathname =
     editorGroupsState.secondaryGroupPathname ??
     getLastEditorGroupPathname(editorGroupsState.secondaryGroupTabs);
+  const isNotesRouteInActivePane = isRouteActive(pathname, "/notes");
 
   return (
-    <SidebarProvider>
-      <AppSidebar onOpenWorkbenchRoute={openWorkbenchRouteFromSidebar} />
-      <SidebarInset>
-        <AppBar
-          title={title}
-          isRightSidebarOpen={isRightSidebarOpen}
-          isBottomPanelOpen={isBottomPanelOpen}
-          isEditorSplitLayout={editorGroupsState.isSplitLayout}
-          onToggleRightSidebar={() => {
-            setIsRightSidebarOpen((previous) => !previous);
-          }}
-          onToggleBottomPanel={() => {
-            setIsBottomPanelOpen((previous) => !previous);
-          }}
-          onToggleEditorSplitLayout={toggleEditorSplitLayout}
+    <SidebarProvider className="h-full overflow-hidden flex-col">
+      <AppBar
+        title={title}
+        isRightSidebarOpen={isRightSidebarOpen}
+        isBottomPanelOpen={isBottomPanelOpen}
+        isEditorSplitLayout={editorGroupsState.isSplitLayout}
+        onToggleRightSidebar={() => {
+          setIsRightSidebarOpen((previous) => !previous);
+        }}
+        onToggleBottomPanel={() => {
+          setIsBottomPanelOpen((previous) => !previous);
+        }}
+        onToggleEditorSplitLayout={toggleEditorSplitLayout}
+      />
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <AppSidebar
+          onOpenWorkbenchRoute={openWorkbenchRouteFromSidebar}
+          className="top-[41px] h-auto"
         />
-        <div className="relative flex min-h-0 flex-1">
-          <div ref={centerWorkbenchRef} className="min-h-0 min-w-0 flex-1">
-            {editorGroupsState.isSplitLayout ? (
-              <div className="flex h-full min-h-0 min-w-0">
-                <section
-                  className={
-                    editorGroupsState.activeGroupId === "primary"
-                      ? "flex min-h-0 min-w-0 flex-col border-r ring-1 ring-border"
-                      : "flex min-h-0 min-w-0 flex-col border-r"
-                  }
-                  style={{
-                    width: `${editorGroupsState.primaryGroupWidthPercent}%`,
-                  }}
-                  onMouseDown={() => {
-                    if (editorGroupsState.activeGroupId !== "primary") {
-                      activateEditorGroup("primary");
-                    }
-                  }}
-                >
-                  <div className="min-h-0 min-w-0 flex-1">
-                    <WorkbenchPaneScopeProvider scopeId="primary">
-                      {primaryPanePathname ? (
-                        <WorkbenchRouteHost pathname={primaryPanePathname} />
-                      ) : (
-                        <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
-                          Pane 1 ready: {editorGroupsState.primaryGroupTitle}
-                        </div>
-                      )}
-                    </WorkbenchPaneScopeProvider>
-                  </div>
-                </section>
-
-                <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  className="z-10 w-1 -translate-x-1/2 cursor-col-resize bg-transparent hover:bg-border"
-                  onMouseDown={handleEditorGroupResizeStart}
-                />
-
-                <section
-                  className={
-                    editorGroupsState.activeGroupId === "secondary"
-                      ? "flex min-h-0 min-w-0 flex-1 flex-col ring-1 ring-border"
-                      : "flex min-h-0 min-w-0 flex-1 flex-col"
-                  }
-                  onMouseDown={() => {
-                    if (editorGroupsState.activeGroupId !== "secondary") {
-                      activateEditorGroup("secondary");
-                    }
-                  }}
-                >
-                  <div className="min-h-0 min-w-0 flex-1">
-                    <WorkbenchPaneScopeProvider scopeId="secondary">
-                      {secondaryPanePathname ? (
-                        <WorkbenchRouteHost pathname={secondaryPanePathname} />
-                      ) : (
-                        <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
-                          Pane 2 ready: {editorGroupsState.secondaryGroupTitle}
-                        </div>
-                      )}
-                    </WorkbenchPaneScopeProvider>
-                  </div>
-                </section>
-              </div>
-            ) : (
-              <div className="min-h-0 min-w-0 h-full">
-                <WorkbenchPaneScopeProvider scopeId="primary">
-                  <Outlet />
-                </WorkbenchPaneScopeProvider>
-              </div>
-            )}
-          </div>
-
-          {isRightSidebarOpen ? (
-            <aside
-              className="bg-sidebar relative border-l"
-              style={{ width: `${workbenchLayoutState.rightSidebarWidth}px` }}
-            >
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                className="absolute top-0 left-0 z-30 h-full w-1 -translate-x-1/2 cursor-col-resize bg-transparent hover:bg-border"
-                onMouseDown={handleRightSidebarResizeStart}
-              />
-              <div className="h-full overflow-y-auto py-2">
-                <AppSidebarAssistantSection
-                  conversations={sortedAssistantConversations}
-                  activeConversationId={assistantState.activeConversationId}
-                  renamingConversationId={renamingConversationId}
-                  renameValue={renameValue}
-                  onRenameValueChange={setRenameValue}
-                  onCreateConversation={createConversation}
-                  onSelectConversation={selectConversation}
-                  onStartRename={startConversationRename}
-                  onSaveRename={saveConversationRename}
-                  onCancelRename={cancelConversationRename}
-                  onTogglePinned={toggleConversationPinned}
-                  onDeleteConversation={deleteConversation}
-                />
-              </div>
-            </aside>
-          ) : null}
-
-          {isBottomPanelOpen ? (
-            <section
-              className="bg-background/95 absolute bottom-0 left-0 z-20 border-t backdrop-blur"
-              style={{
-                right: isRightSidebarOpen
-                  ? `${workbenchLayoutState.rightSidebarWidth}px`
-                  : "0px",
-                height: `${workbenchLayoutState.bottomPanelHeight}px`,
-              }}
-            >
-              <div
-                role="separator"
-                aria-orientation="horizontal"
-                className="absolute top-0 left-0 z-30 h-1 w-full -translate-y-1/2 cursor-row-resize bg-transparent hover:bg-border"
-                onMouseDown={handleBottomPanelResizeStart}
-              />
-              <div className="bg-muted/20 flex h-8 items-center justify-between border-b px-2">
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant={
-                      activeBottomPanelView === "route-timing"
-                        ? "secondary"
-                        : "ghost"
-                    }
-                    className="h-6 px-2 text-xs"
-                    onClick={() => {
-                      setActiveBottomPanelView("route-timing");
-                    }}
-                  >
-                    Route Timing
-                  </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant={
-                      activeBottomPanelView === "output" ? "secondary" : "ghost"
-                    }
-                    className="h-6 px-2 text-xs"
-                    onClick={() => {
-                      setActiveBottomPanelView("output");
-                    }}
-                  >
-                    Output
-                  </Button>
-                </div>
-                <p className="text-muted-foreground text-xs">Cmd/Ctrl+J</p>
-              </div>
-              <div className="h-[calc(100%-2rem)] min-h-0 overflow-hidden">
-                {activeBottomPanelView === "route-timing" ? (
-                  <DevRouteTimingPanel mode="docked" />
-                ) : (
-                  <DevOutputPanel />
-                )}
-              </div>
-            </section>
-          ) : null}
-        </div>
-        <Button
-          type="button"
-          size="icon"
-          className="fixed right-6 bottom-6 z-50 size-12 rounded-full"
-          onMouseEnter={() => {
-            prefetchRouteModule("/notes");
+        <WorkbenchBottomPanelContext.Provider
+          value={{
+            activeBottomPanelView,
+            isBottomPanelOpen,
+            activePaneScopeId: editorGroupsState.activeGroupId,
+            propertiesHostElement,
           }}
-          onFocus={() => {
-            prefetchRouteModule("/notes");
-          }}
-          onClick={() => {
-            void handleCreateNote();
-          }}
-          disabled={isCreatingNote}
-          aria-label="Create new note"
         >
-          <Plus className="size-5" />
-        </Button>
-        {import.meta.env.DEV && !isBottomPanelOpen ? (
-          <DevRouteTimingPanel />
-        ) : null}
-      </SidebarInset>
+          <SidebarInset>
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                  <div
+                    ref={centerWorkbenchRef}
+                    className="min-h-0 min-w-0 flex-1 overflow-hidden"
+                  >
+                    {editorGroupsState.isSplitLayout ? (
+                      <div className="flex h-full min-h-0 min-w-0">
+                        <section
+                          className={
+                            editorGroupsState.activeGroupId === "primary"
+                              ? "flex min-h-0 min-w-0 flex-col border-r ring-1 ring-border"
+                              : "flex min-h-0 min-w-0 flex-col border-r"
+                          }
+                          style={{
+                            width: `${editorGroupsState.primaryGroupWidthPercent}%`,
+                          }}
+                          onMouseDown={() => {
+                            if (editorGroupsState.activeGroupId !== "primary") {
+                              activateEditorGroup("primary");
+                            }
+                          }}
+                        >
+                          <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                            <WorkbenchPaneScopeProvider scopeId="primary">
+                              {primaryPanePathname ? (
+                                <WorkbenchRouteHost
+                                  pathname={primaryPanePathname}
+                                />
+                              ) : (
+                                <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
+                                  Pane 1 ready:{" "}
+                                  {editorGroupsState.primaryGroupTitle}
+                                </div>
+                              )}
+                            </WorkbenchPaneScopeProvider>
+                          </div>
+                        </section>
+
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          className="z-10 w-1 -translate-x-1/2 cursor-col-resize bg-transparent hover:bg-border"
+                          onMouseDown={handleEditorGroupResizeStart}
+                        />
+
+                        <section
+                          className={
+                            editorGroupsState.activeGroupId === "secondary"
+                              ? "flex min-h-0 min-w-0 flex-1 flex-col ring-1 ring-border"
+                              : "flex min-h-0 min-w-0 flex-1 flex-col"
+                          }
+                          onMouseDown={() => {
+                            if (
+                              editorGroupsState.activeGroupId !== "secondary"
+                            ) {
+                              activateEditorGroup("secondary");
+                            }
+                          }}
+                        >
+                          <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                            <WorkbenchPaneScopeProvider scopeId="secondary">
+                              {secondaryPanePathname ? (
+                                <WorkbenchRouteHost
+                                  pathname={secondaryPanePathname}
+                                />
+                              ) : (
+                                <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
+                                  Pane 2 ready:{" "}
+                                  {editorGroupsState.secondaryGroupTitle}
+                                </div>
+                              )}
+                            </WorkbenchPaneScopeProvider>
+                          </div>
+                        </section>
+                      </div>
+                    ) : (
+                      <div className="h-full min-h-0 min-w-0 overflow-auto">
+                        <WorkbenchPaneScopeProvider scopeId="primary">
+                          <Outlet />
+                        </WorkbenchPaneScopeProvider>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {isBottomPanelOpen ? (
+                  <section
+                    className="bg-background/95 relative z-20 shrink-0 border-t backdrop-blur"
+                    style={{
+                      height: `${workbenchLayoutState.bottomPanelHeight}px`,
+                    }}
+                  >
+                    <div
+                      role="separator"
+                      aria-orientation="horizontal"
+                      className="absolute top-0 left-0 z-30 h-1 w-full -translate-y-1/2 cursor-row-resize bg-transparent hover:bg-border"
+                      onMouseDown={handleBottomPanelResizeStart}
+                    />
+                    <div className="bg-muted/20 flex h-8 items-center justify-between border-b px-2">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant={
+                            activeBottomPanelView === "route-timing"
+                              ? "secondary"
+                              : "ghost"
+                          }
+                          className="h-6 px-2 text-xs"
+                          onClick={() => {
+                            setActiveBottomPanelView("route-timing");
+                          }}
+                        >
+                          Route Timing
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant={
+                            activeBottomPanelView === "output"
+                              ? "secondary"
+                              : "ghost"
+                          }
+                          className="h-6 px-2 text-xs"
+                          onClick={() => {
+                            setActiveBottomPanelView("output");
+                          }}
+                        >
+                          Output
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant={
+                            activeBottomPanelView === "properties"
+                              ? "secondary"
+                              : "ghost"
+                          }
+                          className="h-6 px-2 text-xs"
+                          onClick={() => {
+                            setActiveBottomPanelView("properties");
+                          }}
+                        >
+                          Properties
+                        </Button>
+                        {import.meta.env.DEV ? (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant={
+                              activeBottomPanelView === "dev-tools"
+                                ? "secondary"
+                                : "ghost"
+                            }
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              setActiveBottomPanelView("dev-tools");
+                            }}
+                          >
+                            Dev Tools
+                          </Button>
+                        ) : null}
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Cmd/Ctrl+J
+                      </p>
+                    </div>
+                    <div className="h-[calc(100%-2rem)] min-h-0 overflow-hidden">
+                      {activeBottomPanelView === "route-timing" ? (
+                        <DevRouteTimingPanel mode="docked" />
+                      ) : activeBottomPanelView === "dev-tools" ? (
+                        <DevNotesToolsPanel />
+                      ) : activeBottomPanelView === "properties" ? (
+                        <div
+                          ref={setPropertiesHostElement}
+                          className="h-full min-h-0 overflow-hidden"
+                        >
+                          {!isNotesRouteInActivePane ? (
+                            <div className="text-muted-foreground flex h-full items-center justify-center px-4 text-center text-sm">
+                              Open a Notes editor in the active pane to view
+                              properties.
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <DevOutputPanel />
+                      )}
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+
+              {isRightSidebarOpen ? (
+                <aside
+                  className="bg-sidebar relative shrink-0 border-l"
+                  style={{
+                    width: `${workbenchLayoutState.rightSidebarWidth}px`,
+                  }}
+                >
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    className="absolute top-0 left-0 z-30 h-full w-1 -translate-x-1/2 cursor-col-resize bg-transparent hover:bg-border"
+                    onMouseDown={handleRightSidebarResizeStart}
+                  />
+                  <div className="h-full overflow-y-auto py-2">
+                    <AppSidebarAssistantSection
+                      conversations={sortedAssistantConversations}
+                      activeConversationId={assistantState.activeConversationId}
+                      renamingConversationId={renamingConversationId}
+                      renameValue={renameValue}
+                      onRenameValueChange={setRenameValue}
+                      onCreateConversation={createConversation}
+                      onSelectConversation={selectConversation}
+                      onStartRename={startConversationRename}
+                      onSaveRename={saveConversationRename}
+                      onCancelRename={cancelConversationRename}
+                      onTogglePinned={toggleConversationPinned}
+                      onDeleteConversation={deleteConversation}
+                    />
+                  </div>
+                </aside>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              size="icon"
+              className="fixed right-6 bottom-6 z-50 size-12 rounded-full"
+              onMouseEnter={() => {
+                prefetchRouteModule("/notes");
+              }}
+              onFocus={() => {
+                prefetchRouteModule("/notes");
+              }}
+              onClick={() => {
+                void handleCreateNote();
+              }}
+              disabled={isCreatingNote}
+              aria-label="Create new note"
+            >
+              <Plus className="size-5" />
+            </Button>
+          </SidebarInset>
+        </WorkbenchBottomPanelContext.Provider>
+      </div>
     </SidebarProvider>
   );
 }

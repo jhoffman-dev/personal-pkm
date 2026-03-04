@@ -363,28 +363,58 @@ Deferred until post-migration and shell stabilization.
 
 Use this section for items you want remembered and surfaced when they are contextually relevant during active development.
 
+### Quick Capture (User-Friendly)
+
+When you want to add an item quickly, add a plain bullet under **Raw User Capture**.
+
+- No ID needed
+- No tags needed
+- No candidate track needed
+- No blocker/state fields needed
+
+Copilot will normalize those bullets into the table, assign unique `UI-*` IDs, and fill the other fields.
+
+### Raw User Capture (Add Here)
+
+- _(Add new items as plain bullets; Copilot will convert them to structured rows.)_
+
 ### Copilot Relevance Protocol
 
 When a new implementation request comes in, Copilot should:
 
-1. Identify the active work area tags (for example: `sidebar`, `app-bar`, `notes`, `bottom-panel`, `wb-07`).
-2. Scan this queue for items with overlapping tags.
-3. Propose only matching items with `Suggest when` = `now` or `soon` and state `queued`/`needs-verify`.
-4. On approval, promote the item to an active backlog row (`WB-*`/`DF-*`) or mark as implemented.
+1. Read items from **Raw User Capture**, **Active Queue**, and **Completed Intake Items**.
+2. Assign new IDs by incrementing from the current highest `UI-*` value (avoid collisions).
+3. Normalize raw bullets into structured rows (tags, timing, candidate track, blockers, state) in **Active Queue**.
+4. Identify active work-area tags (for example: `sidebar`, `app-bar`, `notes`, `bottom-panel`, `wb-07`).
+5. Propose only matching items from **Active Queue** with `Suggest when` = `now` or `soon` and state `queued`.
+6. After implementation, remove the item from **Active Queue** and append it to **Completed Intake Items** with completion date and validation notes.
+7. On approval, promote qualifying items into active backlog rows (`WB-*`/`DF-*`) when needed.
 
-### Queue Format
+### Active Queue (Not Yet Implemented)
 
-| ID    | Item                                                                                                                 | Tags (for relevance matching)                          | Suggest when | Candidate track | Blocked by                       | State        |
-| ----- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------ | --------------- | -------------------------------- | ------------ |
-| UI-01 | Window next to the left sidebar runs off the screen and needs horizontal scroll to view content.                     | `layout`, `sidebar`, `responsive`, `workbench-shell`   | now          | WB-01 / WB-05   | none                             | queued       |
-| UI-02 | `Ctrl/Cmd+Click` on entity rows in left sidebar should open in a new tab (for example People).                       | `sidebar`, `open-target`, `tabs`, `wb-07`              | now          | WB-07           | none                             | needs-verify |
-| UI-03 | Selected tile indicator causes search bar to shift based on label length.                                            | `app-bar`, `split-indicator`, `layout-stability`       | soon         | WB-04           | none                             | queued       |
-| UI-04 | App bar is not full width; appears constrained beside side rail/inner sidebar.                                       | `app-bar`, `workbench-shell`, `layout`                 | now          | WB-01 / WB-04   | none                             | queued       |
-| UI-05 | Remove Route Timing button from app bar (already available in bottom bar).                                           | `app-bar`, `bottom-panel`, `cleanup`                   | soon         | WB-01           | none                             | queued       |
-| UI-06 | "Delete same title" should not ship in production UX; move to dev tools area in bottom bar.                          | `notes`, `dev-tools`, `bottom-panel`, `product-polish` | later        | WB-05 / DF      | notes UX stabilization           | queued       |
-| UI-07 | Move "Delete note" action to bottom properties area as "Delete Note" and add right-click delete option in note list. | `notes`, `properties`, `context-menu`, `sidebar`       | later        | WB-05 / DF      | properties placement decision    | queued       |
-| UI-08 | Move properties panel into a bottom bar tab instead of per-tile screen area.                                         | `notes`, `properties`, `bottom-panel`, `layout`        | later        | WB-05 / Phase 7 | bottom panel tab model expansion | queued       |
+Only items in this table are pending implementation.
 
-### Quick Add Row Template
+| ID  | Item | Tags (for relevance matching) | Suggest when | Candidate track | Blocked by | State |
+| --- | ---- | ----------------------------- | ------------ | --------------- | ---------- | ----- |
 
-`| UI-XX | <item> | <tag1>, <tag2>, <tag3> | now/soon/later | <WB-## or DF> | <blocker or none> | queued |`
+### Completed Intake Items (Implemented)
+
+Implemented items are moved here immediately so the active queue only shows pending work.
+
+| ID    | Item                                                                                                                 | Completed on | Validation                            | Verification status    | Notes                                                                                                  |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| UI-01 | Window next to the left sidebar runs off the screen and needs horizontal scroll to view content.                     | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Added shell shrink/overflow guards.                                                                    |
+| UI-02 | `Ctrl/Cmd+Click` on entity rows in left sidebar should open in a new tab (for example People).                       | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Implemented explicit open-target behavior in sidebar flows.                                            |
+| UI-03 | Selected tile indicator causes search bar to shift based on label length.                                            | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Tile indicator moved to fixed-width truncated slot.                                                    |
+| UI-04 | App bar is not full width; appears constrained beside side rail/inner sidebar.                                       | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | App bar moved to full-width top shell row.                                                             |
+| UI-05 | Remove Route Timing button from app bar (already available in bottom bar).                                           | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Removed floating Route Timing trigger from `layout`; bottom-panel tab remains.                         |
+| UI-06 | "Delete same title" should not ship in production UX; move to dev tools area in bottom bar.                          | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Moved from Notes page to bottom-panel `Dev Tools` tab (DEV-only).                                      |
+| UI-07 | Move "Delete note" action to bottom properties area as "Delete Note" and add right-click delete option in note list. | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Moved `Delete Note` to properties bottom and added right-click delete in sidebar notes list (confirm). |
+| UI-08 | Move properties panel into a bottom bar tab instead of per-tile screen area.                                         | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Added bottom-panel `Properties` tab host and moved Notes properties rendering into that tab.           |
+| UI-09 | Search area should float more centrally (VS Code-like) and not consume all available horizontal space.               | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Search constrained to centered max-width region.                                                       |
+| UI-10 | Move Back/Forward controls next to search and keep tile indicator pinned to the left side (VS Code-like ordering).   | 2026-03-04   | `npm run lint && npm run test` (pass) | needs manual UX verify | Back/Forward grouped with search; title remains left anchored.                                         |
+
+### Quick Add Templates
+
+- User quick-add bullet: `- <item>`
+- Copilot structured row: `| UI-XX | <item> | <tag1>, <tag2>, <tag3> | now/soon/later | <WB-## or DF> | <blocker or none> | queued |`
