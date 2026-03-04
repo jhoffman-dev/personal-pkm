@@ -4,9 +4,9 @@ import {
   type PropertyOption,
 } from "@/components/property-link-picker";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SystemCustomPropertiesPanel } from "@/components/system-custom-properties-panel";
+import { WorkbenchTabstrip } from "@/components/workbench-tabstrip";
 import { DEFAULT_NOTE_BODY, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 import { firebaseAuth } from "@/lib/firebase";
 import { migrateEmbeddedNoteImagesToStorage } from "@/lib/note-images-storage";
@@ -118,6 +118,31 @@ export function NotesPage() {
     () => openTabIds.map((id) => notesState.entities[id]).filter(Boolean),
     [notesState.entities, openTabIds],
   );
+
+  const workbenchTabs = useMemo(() => {
+    if (openTabs.length === 0) {
+      return [
+        {
+          id: "notes-default-tab",
+          label: "Notes",
+          isActive: true,
+        },
+      ];
+    }
+
+    return openTabs.map((note) => ({
+      id: note.id,
+      label: note.title || DEFAULT_NOTE_TITLE,
+      isActive: activeTabId === note.id,
+      onSelect: () => {
+        setActiveTab(note.id);
+        setSelectedNoteId(note.id);
+      },
+      onClose: () => {
+        closeNoteTab(note.id);
+      },
+    }));
+  }, [activeTabId, closeNoteTab, openTabs, setActiveTab, setSelectedNoteId]);
 
   const [draftBody, setDraftBody] = useState(DEFAULT_NOTE_BODY);
   const [draftTitle, setDraftTitle] = useState(DEFAULT_NOTE_TITLE);
@@ -600,50 +625,13 @@ export function NotesPage() {
   };
 
   return (
-    <section className="h-[calc(100svh-41px)] p-6">
-      <Card className="h-full min-w-0 overflow-hidden gap-0 py-0">
-        <CardContent className="flex h-full min-h-0 min-w-0 flex-col p-0">
-          <div className="bg-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b p-2">
-            <div className="min-w-0 overflow-x-auto">
-              <div className="flex w-max min-w-full items-center gap-1 pr-1">
-                {openTabs.map((note) => {
-                  const isActive = activeTabId === note.id;
-                  return (
-                    <div
-                      key={note.id}
-                      className="bg-background inline-flex min-w-0 items-center gap-1 rounded-md border"
-                    >
-                      <button
-                        type="button"
-                        className={`max-w-64 truncate px-3 py-1.5 text-sm whitespace-nowrap ${
-                          isActive ? "text-foreground" : "text-muted-foreground"
-                        }`}
-                        onClick={() => {
-                          setActiveTab(note.id);
-                          setSelectedNoteId(note.id);
-                        }}
-                      >
-                        {note.title || DEFAULT_NOTE_TITLE}
-                      </button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        className="mr-1"
-                        aria-label="Close note tab"
-                        onClick={() => {
-                          closeNoteTab(note.id);
-                        }}
-                      >
-                        <X />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
+    <section className="h-full min-h-0">
+      <div className="flex h-full min-h-0 min-w-0 flex-col">
+        <WorkbenchTabstrip
+          tabs={workbenchTabs}
+          className="px-2 py-1"
+          rightSlot={
+            <>
               <Button
                 type="button"
                 size="sm"
@@ -673,323 +661,315 @@ export function NotesPage() {
                 <Trash2 className="size-4" />
                 Delete same title ({notesWithSameTitleCount})
               </Button>
-            </div>
+            </>
+          }
+        />
+
+        <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+          <div className="h-full min-h-0 min-w-0 flex-1 p-4">
+            {selectedNote ? (
+              <div className="flex h-full min-h-0 flex-col gap-3">
+                <input
+                  type="text"
+                  value={draftTitle}
+                  onChange={(event) => setDraftTitle(event.target.value)}
+                  placeholder="Note title"
+                  className="w-full border-0 bg-transparent px-0 text-center text-[2.5rem] leading-[1.1] font-bold outline-none"
+                />
+
+                <div className="min-h-0 flex-1">
+                  <SimpleEditor
+                    content={draftBody}
+                    onContentChange={setDraftBody}
+                    noteId={selectedNote.id}
+                    className="h-full"
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                No note selected. Create one with the add button.
+              </p>
+            )}
           </div>
 
-          <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-            <div className="h-full min-h-0 min-w-0 flex-1 p-4">
-              {selectedNote ? (
-                <div className="flex h-full min-h-0 flex-col gap-3">
-                  <input
-                    type="text"
-                    value={draftTitle}
-                    onChange={(event) => setDraftTitle(event.target.value)}
-                    placeholder="Note title"
-                    className="w-full border-0 bg-transparent px-0 text-center text-[2.5rem] leading-[1.1] font-bold outline-none"
-                  />
+          <aside className="border-l bg-muted/10 h-full w-80 max-w-80 shrink-0 basis-80 space-y-5 overflow-y-auto p-4">
+            <div>
+              <h3 className="text-base font-semibold">Properties</h3>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Links, tags, and related records for this note.
+              </p>
+            </div>
 
-                  <div className="min-h-0 flex-1">
-                    <SimpleEditor
-                      content={draftBody}
-                      onContentChange={setDraftBody}
-                      noteId={selectedNote.id}
-                      className="h-full"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-sm">
-                  No note selected. Create one with the add button.
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold">Tags</h4>
+              <div className="flex gap-2">
+                <Input
+                  value={tagInput}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  placeholder="Add tag"
+                  list="shared-tag-suggestions-notes"
+                />
+                <Button type="button" variant="outline" onClick={addTag}>
+                  Add
+                </Button>
+              </div>
+              <datalist id="shared-tag-suggestions-notes">
+                {sharedTagSuggestions.map((tag) => (
+                  <option key={tag} value={tag} />
+                ))}
+              </datalist>
+              <div className="flex flex-wrap gap-2">
+                {draftTags.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">No tags.</p>
+                ) : (
+                  draftTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+                      style={getTagColorStyle(tag)}
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        className="hover:text-foreground text-muted-foreground"
+                        onClick={() => {
+                          setDraftTags((prev) =>
+                            prev.filter((item) => item !== tag),
+                          );
+                        }}
+                        aria-label={`Remove ${tag} tag`}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold">Drawings</h4>
+              {availableDrawings.length === 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  No drawings yet. Create one in the Drawings page.
                 </p>
+              ) : (
+                <div className="space-y-1">
+                  {availableDrawings.slice(0, 8).map((drawing) => (
+                    <div
+                      key={drawing.id}
+                      className="flex items-center justify-between gap-2 rounded-md border px-2 py-1"
+                    >
+                      <p className="truncate text-xs">{drawing.title}</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setDraftBody(
+                            (previous) =>
+                              `${previous}${buildDrawingEmbedHtml(drawing.id)}`,
+                          );
+                        }}
+                      >
+                        Embed
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
-            <aside className="border-l bg-muted/10 h-full w-80 max-w-80 shrink-0 basis-80 space-y-5 overflow-y-auto p-4">
-              <div>
-                <h3 className="text-base font-semibold">Properties</h3>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Links, tags, and related records for this note.
-                </p>
-              </div>
+            <PropertyLinkPicker
+              title="Related notes"
+              options={relatedNoteOptions}
+              selectedIds={draftRelatedNoteIds}
+              onAdd={(id) => {
+                setDraftRelatedNoteIds((prev) => addUnique(prev, id));
+              }}
+              onRemove={(id) => {
+                setDraftRelatedNoteIds((prev) =>
+                  prev.filter((value) => value !== id),
+                );
+              }}
+              onCreateOption={createQuickNote}
+              searchPlaceholder="Search notes..."
+            />
 
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold">Tags</h4>
-                <div className="flex gap-2">
-                  <Input
-                    value={tagInput}
-                    onChange={(event) => setTagInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addTag();
-                      }
-                    }}
-                    placeholder="Add tag"
-                    list="shared-tag-suggestions-notes"
-                  />
-                  <Button type="button" variant="outline" onClick={addTag}>
-                    Add
-                  </Button>
-                </div>
-                <datalist id="shared-tag-suggestions-notes">
-                  {sharedTagSuggestions.map((tag) => (
-                    <option key={tag} value={tag} />
-                  ))}
-                </datalist>
-                <div className="flex flex-wrap gap-2">
-                  {draftTags.length === 0 ? (
-                    <p className="text-muted-foreground text-xs">No tags.</p>
-                  ) : (
-                    draftTags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
-                        style={getTagColorStyle(tag)}
-                      >
-                        {tag}
+            <PropertyLinkPicker
+              title="People"
+              options={peopleOptions}
+              selectedIds={draftPersonIds}
+              onAdd={(id) => {
+                setDraftPersonIds((prev) => addUnique(prev, id));
+              }}
+              onRemove={(id) => {
+                setDraftPersonIds((prev) =>
+                  prev.filter((value) => value !== id),
+                );
+              }}
+              onCreateOption={createQuickPerson}
+            />
+
+            <PropertyLinkPicker
+              title="Companies"
+              options={companyOptions}
+              selectedIds={draftCompanyIds}
+              onAdd={(id) => {
+                setDraftCompanyIds((prev) => addUnique(prev, id));
+              }}
+              onRemove={(id) => {
+                setDraftCompanyIds((prev) =>
+                  prev.filter((value) => value !== id),
+                );
+              }}
+              onCreateOption={createQuickCompany}
+            />
+
+            <PropertyLinkPicker
+              title="Projects"
+              options={projectOptions}
+              selectedIds={draftProjectIds}
+              onAdd={(id) => {
+                setDraftProjectIds((prev) => addUnique(prev, id));
+              }}
+              onRemove={(id) => {
+                setDraftProjectIds((prev) =>
+                  prev.filter((value) => value !== id),
+                );
+              }}
+              onCreateOption={createQuickProject}
+            />
+
+            <PropertyLinkPicker
+              title="Tasks"
+              options={taskOptions}
+              selectedIds={draftTaskIds}
+              onAdd={(id) => {
+                setDraftTaskIds((prev) => addUnique(prev, id));
+              }}
+              onRemove={(id) => {
+                setDraftTaskIds((prev) => prev.filter((value) => value !== id));
+              }}
+              onCreateOption={createQuickTask}
+            />
+
+            <PropertyLinkPicker
+              title="Meetings"
+              options={meetingOptions}
+              selectedIds={draftMeetingIds}
+              onAdd={(id) => {
+                setDraftMeetingIds((prev) => addUnique(prev, id));
+              }}
+              onRemove={(id) => {
+                setDraftMeetingIds((prev) =>
+                  prev.filter((value) => value !== id),
+                );
+              }}
+              onCreateOption={createQuickMeeting}
+            />
+
+            <SystemCustomPropertiesPanel
+              objectTypeId="object_type_notes"
+              recordId={selectedNote?.id ?? null}
+            />
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold">Backlinks</h4>
+              {backlinks.notes.length === 0 &&
+              backlinks.projects.length === 0 &&
+              backlinks.tasks.length === 0 &&
+              backlinks.meetings.length === 0 &&
+              backlinks.companies.length === 0 &&
+              backlinks.people.length === 0 ? (
+                <p className="text-muted-foreground text-xs">No backlinks.</p>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  {backlinks.notes.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Notes</p>
+                      {backlinks.notes.map((item) => (
                         <button
+                          key={item.id}
                           type="button"
-                          className="hover:text-foreground text-muted-foreground"
+                          className="hover:bg-muted block w-full rounded-md px-2 py-1 text-left"
                           onClick={() => {
-                            setDraftTags((prev) =>
-                              prev.filter((item) => item !== tag),
-                            );
+                            replaceActiveTab(item.id);
                           }}
-                          aria-label={`Remove ${tag} tag`}
                         >
-                          <X className="size-3" />
+                          {item.label}
                         </button>
-                      </span>
-                    ))
+                      ))}
+                    </div>
+                  )}
+
+                  {backlinks.projects.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Projects</p>
+                      {backlinks.projects.map((item) => (
+                        <p key={item.id} className="px-2 py-1">
+                          {item.label}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {backlinks.tasks.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Tasks</p>
+                      {backlinks.tasks.map((item) => (
+                        <p key={item.id} className="px-2 py-1">
+                          {item.label}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {backlinks.meetings.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Meetings</p>
+                      {backlinks.meetings.map((item) => (
+                        <p key={item.id} className="px-2 py-1">
+                          {item.label}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {backlinks.companies.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Companies</p>
+                      {backlinks.companies.map((item) => (
+                        <p key={item.id} className="px-2 py-1">
+                          {item.label}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {backlinks.people.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">People</p>
+                      {backlinks.people.map((item) => (
+                        <p key={item.id} className="px-2 py-1">
+                          {item.label}
+                        </p>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold">Drawings</h4>
-                {availableDrawings.length === 0 ? (
-                  <p className="text-muted-foreground text-xs">
-                    No drawings yet. Create one in the Drawings page.
-                  </p>
-                ) : (
-                  <div className="space-y-1">
-                    {availableDrawings.slice(0, 8).map((drawing) => (
-                      <div
-                        key={drawing.id}
-                        className="flex items-center justify-between gap-2 rounded-md border px-2 py-1"
-                      >
-                        <p className="truncate text-xs">{drawing.title}</p>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setDraftBody(
-                              (previous) =>
-                                `${previous}${buildDrawingEmbedHtml(drawing.id)}`,
-                            );
-                          }}
-                        >
-                          Embed
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <PropertyLinkPicker
-                title="Related notes"
-                options={relatedNoteOptions}
-                selectedIds={draftRelatedNoteIds}
-                onAdd={(id) => {
-                  setDraftRelatedNoteIds((prev) => addUnique(prev, id));
-                }}
-                onRemove={(id) => {
-                  setDraftRelatedNoteIds((prev) =>
-                    prev.filter((value) => value !== id),
-                  );
-                }}
-                onCreateOption={createQuickNote}
-                searchPlaceholder="Search notes..."
-              />
-
-              <PropertyLinkPicker
-                title="People"
-                options={peopleOptions}
-                selectedIds={draftPersonIds}
-                onAdd={(id) => {
-                  setDraftPersonIds((prev) => addUnique(prev, id));
-                }}
-                onRemove={(id) => {
-                  setDraftPersonIds((prev) =>
-                    prev.filter((value) => value !== id),
-                  );
-                }}
-                onCreateOption={createQuickPerson}
-              />
-
-              <PropertyLinkPicker
-                title="Companies"
-                options={companyOptions}
-                selectedIds={draftCompanyIds}
-                onAdd={(id) => {
-                  setDraftCompanyIds((prev) => addUnique(prev, id));
-                }}
-                onRemove={(id) => {
-                  setDraftCompanyIds((prev) =>
-                    prev.filter((value) => value !== id),
-                  );
-                }}
-                onCreateOption={createQuickCompany}
-              />
-
-              <PropertyLinkPicker
-                title="Projects"
-                options={projectOptions}
-                selectedIds={draftProjectIds}
-                onAdd={(id) => {
-                  setDraftProjectIds((prev) => addUnique(prev, id));
-                }}
-                onRemove={(id) => {
-                  setDraftProjectIds((prev) =>
-                    prev.filter((value) => value !== id),
-                  );
-                }}
-                onCreateOption={createQuickProject}
-              />
-
-              <PropertyLinkPicker
-                title="Tasks"
-                options={taskOptions}
-                selectedIds={draftTaskIds}
-                onAdd={(id) => {
-                  setDraftTaskIds((prev) => addUnique(prev, id));
-                }}
-                onRemove={(id) => {
-                  setDraftTaskIds((prev) =>
-                    prev.filter((value) => value !== id),
-                  );
-                }}
-                onCreateOption={createQuickTask}
-              />
-
-              <PropertyLinkPicker
-                title="Meetings"
-                options={meetingOptions}
-                selectedIds={draftMeetingIds}
-                onAdd={(id) => {
-                  setDraftMeetingIds((prev) => addUnique(prev, id));
-                }}
-                onRemove={(id) => {
-                  setDraftMeetingIds((prev) =>
-                    prev.filter((value) => value !== id),
-                  );
-                }}
-                onCreateOption={createQuickMeeting}
-              />
-
-              <SystemCustomPropertiesPanel
-                objectTypeId="object_type_notes"
-                recordId={selectedNote?.id ?? null}
-              />
-
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold">Backlinks</h4>
-                {backlinks.notes.length === 0 &&
-                backlinks.projects.length === 0 &&
-                backlinks.tasks.length === 0 &&
-                backlinks.meetings.length === 0 &&
-                backlinks.companies.length === 0 &&
-                backlinks.people.length === 0 ? (
-                  <p className="text-muted-foreground text-xs">No backlinks.</p>
-                ) : (
-                  <div className="space-y-3 text-sm">
-                    {backlinks.notes.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground text-xs">Notes</p>
-                        {backlinks.notes.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className="hover:bg-muted block w-full rounded-md px-2 py-1 text-left"
-                            onClick={() => {
-                              replaceActiveTab(item.id);
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {backlinks.projects.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground text-xs">
-                          Projects
-                        </p>
-                        {backlinks.projects.map((item) => (
-                          <p key={item.id} className="px-2 py-1">
-                            {item.label}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    {backlinks.tasks.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground text-xs">Tasks</p>
-                        {backlinks.tasks.map((item) => (
-                          <p key={item.id} className="px-2 py-1">
-                            {item.label}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    {backlinks.meetings.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground text-xs">
-                          Meetings
-                        </p>
-                        {backlinks.meetings.map((item) => (
-                          <p key={item.id} className="px-2 py-1">
-                            {item.label}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    {backlinks.companies.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground text-xs">
-                          Companies
-                        </p>
-                        {backlinks.companies.map((item) => (
-                          <p key={item.id} className="px-2 py-1">
-                            {item.label}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    {backlinks.people.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground text-xs">People</p>
-                        {backlinks.people.map((item) => (
-                          <p key={item.id} className="px-2 py-1">
-                            {item.label}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </aside>
-          </div>
-        </CardContent>
-      </Card>
+              )}
+            </div>
+          </aside>
+        </div>
+      </div>
     </section>
   );
 }

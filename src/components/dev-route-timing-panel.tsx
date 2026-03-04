@@ -13,8 +13,15 @@ type RouteTimingRow = RouteTimingSummary & {
   avgDeltaMs?: number;
 };
 
-export function DevRouteTimingPanel() {
-  const [open, setOpen] = useState(false);
+interface DevRouteTimingPanelProps {
+  mode?: "floating" | "docked";
+}
+
+export function DevRouteTimingPanel({
+  mode = "floating",
+}: DevRouteTimingPanelProps) {
+  const isDocked = mode === "docked";
+  const [isFloatingOpen, setIsFloatingOpen] = useState(false);
   const [rows, setRows] = useState<RouteTimingRow[]>(() =>
     getRouteTimingSnapshot().map((summary) => ({
       ...summary,
@@ -69,14 +76,14 @@ export function DevRouteTimingPanel() {
     return null;
   }
 
-  if (!open) {
+  if (!isDocked && !isFloatingOpen) {
     return (
       <div className="fixed right-6 bottom-24 z-50">
         <Button
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => setOpen(true)}
+          onClick={() => setIsFloatingOpen(true)}
         >
           Route Timing
         </Button>
@@ -85,7 +92,13 @@ export function DevRouteTimingPanel() {
   }
 
   return (
-    <div className="fixed right-6 bottom-24 z-50 w-[36rem] max-w-[calc(100vw-2rem)] rounded-md border bg-background p-3 shadow-sm">
+    <div
+      className={
+        isDocked
+          ? "flex h-full min-h-0 flex-col bg-background p-3"
+          : "fixed right-6 bottom-24 z-50 flex w-[36rem] max-w-[calc(100vw-2rem)] flex-col rounded-md border bg-background p-3 shadow-sm"
+      }
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-sm font-medium">Route Timing Diagnostics</p>
         <div className="flex items-center gap-2">
@@ -103,14 +116,16 @@ export function DevRouteTimingPanel() {
           >
             Reset
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setOpen(false)}
-          >
-            Hide
-          </Button>
+          {!isDocked ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIsFloatingOpen(false)}
+            >
+              Hide
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -119,7 +134,11 @@ export function DevRouteTimingPanel() {
           No route timing samples yet.
         </p>
       ) : (
-        <div className="max-h-72 overflow-auto">
+        <div
+          className={
+            isDocked ? "min-h-0 flex-1 overflow-auto" : "max-h-72 overflow-auto"
+          }
+        >
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b">

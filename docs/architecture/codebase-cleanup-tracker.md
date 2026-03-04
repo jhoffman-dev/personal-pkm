@@ -911,5 +911,6 @@ Source of standards: `.github/copilot-instructions.md`
 
 - Priority order follows constitution conflict priorities: Correctness -> Architectural boundaries -> Tests -> Readability -> Token efficiency -> Style.
 - Update this file whenever a cleanup item moves status or scope changes.
+- Consolidated cross-track active/deferred tasks are tracked in [task-backlog.md](task-backlog.md).
 - Deferred product follow-up (not part of current Phase 5 scope): add a notes image-ingest workflow for remote URLs (`http/https`) that uploads to Firebase Storage under the current user/note and rewrites `img[src]` in note body to stored download URLs.
 - Deferred code-health follow-up (outside this completed migration scope): revisit [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts) to remove the targeted `react-hooks/set-state-in-effect` suppression via an effect-free draft hydration pattern.
