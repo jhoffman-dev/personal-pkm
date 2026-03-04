@@ -11,22 +11,32 @@ import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import { uploadEntityImageForUser } from "@/lib/entity-images-storage";
 import { firebaseAuth } from "@/lib/firebase";
 import {
-  dataActions,
-  dataThunks,
-  useAppDispatch,
-  useAppSelector,
-} from "@/store";
+  companiesDataRuntime,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import { notesDataRuntime, useNotesEntityStateFacade } from "@/features/notes";
+import { peopleDataRuntime, usePeopleStateFacade } from "@/features/people";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
+import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export function CompaniesPage() {
   const dispatch = useAppDispatch();
-  const companiesState = useAppSelector((state) => state.companies);
-  const peopleState = useAppSelector((state) => state.people);
-  const projectsState = useAppSelector((state) => state.projects);
-  const notesState = useAppSelector((state) => state.notes);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const meetingsState = useAppSelector((state) => state.meetings);
+  const { companiesState, setSelectedCompanyId } = useCompaniesStateFacade();
+  const { peopleState } = usePeopleStateFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
 
   const [draftName, setDraftName] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
@@ -55,22 +65,22 @@ export function CompaniesPage() {
 
   useEffect(() => {
     if (companiesState.status === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
     if (peopleState.status === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
     if (notesState.status === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesState.status,
@@ -105,14 +115,12 @@ export function CompaniesPage() {
       return;
     }
 
-    dispatch(
-      dataActions.companies.setSelectedId(sortedCompanies[0]?.id ?? null),
-    );
+    setSelectedCompanyId(sortedCompanies[0]?.id ?? null);
   }, [
     companiesState.entities,
     companiesState.selectedId,
     companiesState.status,
-    dispatch,
+    setSelectedCompanyId,
     sortedCompanies,
   ]);
 
@@ -204,25 +212,23 @@ export function CompaniesPage() {
     }
 
     const timeout = window.setTimeout(() => {
-      void dispatch(
-        dataThunks.companies.updateOne({
-          id: selectedCompany.id,
-          input: {
-            name: nextName,
-            email: draftEmail,
-            phone: draftPhone,
-            address: draftAddress,
-            website: draftWebsite,
-            photoUrl: draftPhotoUrl,
-            tags: draftTags,
-            personIds: draftPersonIds,
-            projectIds: draftProjectIds,
-            noteIds: draftNoteIds,
-            taskIds: draftTaskIds,
-            meetingIds: draftMeetingIds,
-          },
-        }),
-      );
+      void companiesDataRuntime.updateOne(dispatch, {
+        id: selectedCompany.id,
+        input: {
+          name: nextName,
+          email: draftEmail,
+          phone: draftPhone,
+          address: draftAddress,
+          website: draftWebsite,
+          photoUrl: draftPhotoUrl,
+          tags: draftTags,
+          personIds: draftPersonIds,
+          projectIds: draftProjectIds,
+          noteIds: draftNoteIds,
+          taskIds: draftTaskIds,
+          meetingIds: draftMeetingIds,
+        },
+      });
     }, 400);
 
     return () => window.clearTimeout(timeout);
@@ -305,7 +311,7 @@ export function CompaniesPage() {
 
   const createCompany = async () => {
     const createdId = await createQuickCompany("New Company");
-    dispatch(dataActions.companies.setSelectedId(createdId));
+    setSelectedCompanyId(createdId);
   };
 
   const addTag = () => {

@@ -24,6 +24,15 @@ import {
   type BacklogTaskGroup,
 } from "@/features/calendar";
 import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
+import {
   fromDateTimeLocalValue,
   isTaskTimeblockStale,
   loadTaskTimeblocks,
@@ -33,7 +42,7 @@ import {
   type TaskTimeblock,
   type TaskTimeblockMap,
 } from "@/lib/task-timeblocks";
-import { dataThunks, useAppDispatch, useAppSelector } from "@/store";
+import { useAppDispatch } from "@/store";
 import type {
   DatesSetArg,
   EventChangeArg,
@@ -126,9 +135,9 @@ function formatEventDateTime(value: Date | null): string {
 
 export function CalendarPage() {
   const dispatch = useAppDispatch();
-  const meetingsState = useAppSelector((state) => state.meetings);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const projectsState = useAppSelector((state) => state.projects);
+  const { meetingsState } = useMeetingsStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { projectsState } = useProjectsStateFacade();
   const [settings, setSettings] = useState<AppSettings>(() =>
     loadAppSettings(),
   );
@@ -262,14 +271,14 @@ export function CalendarPage() {
 
   useEffect(() => {
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
 
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, meetingsState.status, projectsState.status, tasksState.status]);
 
@@ -489,14 +498,12 @@ export function CalendarPage() {
       const endIso = endDate.toISOString();
 
       try {
-        await dispatch(
-          dataThunks.tasks.updateOne({
-            id: taskId,
-            input: {
-              dueDate: startIso,
-            },
-          }),
-        ).unwrap();
+        await tasksDataRuntime.updateOne(dispatch, {
+          id: taskId,
+          input: {
+            dueDate: startIso,
+          },
+        });
 
         upsertTaskTimeblock(taskId, {
           start: startIso,
@@ -543,14 +550,12 @@ export function CalendarPage() {
         : addMinutes(startIso, defaultTaskTimeblockMinutes);
 
       try {
-        await dispatch(
-          dataThunks.tasks.updateOne({
-            id: taskId,
-            input: {
-              dueDate: startIso,
-            },
-          }),
-        ).unwrap();
+        await tasksDataRuntime.updateOne(dispatch, {
+          id: taskId,
+          input: {
+            dueDate: startIso,
+          },
+        });
 
         upsertTaskTimeblock(taskId, {
           start: startIso,
@@ -595,14 +600,12 @@ export function CalendarPage() {
 
     setIsSavingTaskDialogTime(true);
     try {
-      await dispatch(
-        dataThunks.tasks.updateOne({
-          id: selectedEvent.taskId,
-          input: {
-            dueDate: startIso,
-          },
-        }),
-      ).unwrap();
+      await tasksDataRuntime.updateOne(dispatch, {
+        id: selectedEvent.taskId,
+        input: {
+          dueDate: startIso,
+        },
+      });
 
       upsertTaskTimeblock(selectedEvent.taskId, {
         start: startIso,

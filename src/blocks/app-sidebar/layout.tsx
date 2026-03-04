@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { createEmptyNoteInput } from "@/lib/note-defaults";
 import { getRouteTitle } from "@/routes/navigation";
 import { prefetchRouteModule } from "@/routes/route-module-loaders";
+import { useAppDispatch } from "@/store";
 import {
-  dataActions,
-  dataThunks,
-  notesTabsActions,
-  useAppDispatch,
-} from "@/store";
+  notesDataRuntime,
+  useNotesEntityStateFacade,
+  useNotesTabsFacade,
+} from "@/features/notes";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -21,12 +21,15 @@ export default function Layout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const title = getRouteTitle(pathname);
+  const { openNoteTab } = useNotesTabsFacade();
+  const { setSelectedNoteId } = useNotesEntityStateFacade();
   const [isCreatingNote, setIsCreatingNote] = useState(false);
 
   const createNoteWithTimeout = async (timeoutMs: number) => {
-    const createPromise = dispatch(
-      dataThunks.notes.createOne(createEmptyNoteInput()),
-    ).unwrap();
+    const createPromise = notesDataRuntime.createOne(
+      dispatch,
+      createEmptyNoteInput(),
+    );
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       window.setTimeout(() => {
@@ -45,8 +48,8 @@ export default function Layout() {
     setIsCreatingNote(true);
     try {
       const note = await createNoteWithTimeout(15000);
-      dispatch(notesTabsActions.openNoteTab({ id: note.id, activate: true }));
-      dispatch(dataActions.notes.setSelectedId(note.id));
+      openNoteTab({ id: note.id, activate: true });
+      setSelectedNoteId(note.id);
       navigate("/notes");
     } catch (error) {
       console.error("Failed to create note:", error);

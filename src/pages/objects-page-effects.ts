@@ -1,7 +1,13 @@
 import type { ObjectRecord } from "@/lib/object-records-store";
 import type { ObjectTypeDefinition } from "@/lib/object-types-store";
 import type { ObjectsViewMode } from "@/pages/objects-page-helpers";
-import { dataThunks, type AppDispatch } from "@/store";
+import { companiesDataRuntime } from "@/features/companies";
+import { meetingsDataRuntime } from "@/features/meetings";
+import { notesDataRuntime } from "@/features/notes";
+import { peopleDataRuntime } from "@/features/people";
+import { projectsDataRuntime } from "@/features/projects";
+import { tasksDataRuntime } from "@/features/tasks";
+import { type AppDispatch } from "@/store";
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect } from "react";
 
@@ -28,27 +34,27 @@ export function useObjectsPageDataLoaded(params: {
 
   useEffect(() => {
     if (peopleStatus === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
 
     if (companiesStatus === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
 
     if (projectsStatus === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
 
     if (notesStatus === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
 
     if (tasksStatus === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
 
     if (meetingsStatus === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesStatus,

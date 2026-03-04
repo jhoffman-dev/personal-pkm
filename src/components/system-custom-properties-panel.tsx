@@ -7,6 +7,12 @@ import type {
   Project,
   Task,
 } from "@/data/entities";
+import { useCompaniesStateFacade } from "@/features/companies";
+import { useMeetingsStateFacade } from "@/features/meetings";
+import { useNotesEntityStateFacade } from "@/features/notes";
+import { usePeopleStateFacade } from "@/features/people";
+import { useProjectsStateFacade } from "@/features/projects";
+import { useTasksEntityStateFacade } from "@/features/tasks";
 import {
   listObjectRecordsByType,
   upsertObjectRecord,
@@ -18,7 +24,6 @@ import {
   type ObjectTypeDefinition,
   type ObjectTypeProperty,
 } from "@/lib/object-types-store";
-import { useAppSelector } from "@/store";
 import { useMemo, useState } from "react";
 
 const SYSTEM_MAPPED_PROPERTY_IDS: Record<string, Set<string>> = {
@@ -160,12 +165,12 @@ export function SystemCustomPropertiesPanel({
   objectTypeId: string;
   recordId: string | null;
 }) {
-  const peopleState = useAppSelector((state) => state.people);
-  const companiesState = useAppSelector((state) => state.companies);
-  const projectsState = useAppSelector((state) => state.projects);
-  const notesState = useAppSelector((state) => state.notes);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const meetingsState = useAppSelector((state) => state.meetings);
+  const { peopleState } = usePeopleStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
 
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
 

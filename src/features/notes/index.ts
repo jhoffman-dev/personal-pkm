@@ -19,3 +19,13 @@ export {
   runNoteDeleteWorkflow,
   type NoteDeletePlan,
 } from "@/features/notes/application/note-delete-workflows";
+export {
+  notesTabsFacade,
+  useNotesTabsFacade,
+} from "@/features/notes/application/notes-state-facade";
+export {
+  notesEntityStateFacade,
+  useNotesEntityStateFacade,
+} from "@/features/notes/application/notes-entity-state-facade";
+export { notesDataRuntime } from "@/features/notes/application/notes-data-runtime";
+export { useNotesEntityStore } from "@/features/notes/state";

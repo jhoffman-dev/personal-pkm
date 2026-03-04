@@ -1,4 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { useCompaniesStateFacade } from "@/features/companies";
+import { useMeetingsStateFacade } from "@/features/meetings";
+import { useNotesEntityStateFacade } from "@/features/notes";
+import { usePeopleStateFacade } from "@/features/people";
+import { useProjectsStateFacade } from "@/features/projects";
+import { useTasksEntityStateFacade } from "@/features/tasks";
 import { firebaseAuth } from "@/lib/firebase";
 import {
   listObjectRecordsByType,
@@ -29,20 +35,20 @@ import { ObjectsPageMainPanel } from "@/pages/objects-page-main-panel";
 import { ObjectsPageSidebar } from "@/pages/objects-page-sidebar";
 import { updateRecordField } from "@/pages/objects-page-mutations";
 import { buildRecordsForType } from "@/pages/objects-page-records";
-import { useAppDispatch, useAppSelector } from "@/store";
-import { useMemo, useRef, useState } from "react";
+import { useAppDispatch } from "@/store";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 export function ObjectsPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const peopleState = useAppSelector((state) => state.people);
-  const companiesState = useAppSelector((state) => state.companies);
-  const projectsState = useAppSelector((state) => state.projects);
-  const notesState = useAppSelector((state) => state.notes);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const meetingsState = useAppSelector((state) => state.meetings);
+  const { peopleState } = usePeopleStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
   const objectTypes = useMemo(() => listObjectTypes(), []);
   const selectableObjectTypes = useMemo(
     () => objectTypes.filter((item) => !item.isSystem),
@@ -97,18 +103,29 @@ export function ObjectsPage() {
   const requestedRecordId = searchParams.get("recordId");
   const requestedViewMode = searchParams.get("view");
 
-  const getRecordsForType = (typeId: string): ObjectRecord[] => {
-    return buildRecordsForType({
-      typeId,
+  const getRecordsForType = useCallback(
+    (typeId: string): ObjectRecord[] => {
+      return buildRecordsForType({
+        typeId,
+        objectTypes,
+        peopleState,
+        companiesState,
+        projectsState,
+        notesState,
+        tasksState,
+        meetingsState,
+      });
+    },
+    [
+      companiesState,
+      meetingsState,
+      notesState,
       objectTypes,
       peopleState,
-      companiesState,
       projectsState,
-      notesState,
       tasksState,
-      meetingsState,
-    });
-  };
+    ],
+  );
 
   useObjectsPageDataLoaded({
     dispatch,
@@ -235,7 +252,6 @@ export function ObjectsPage() {
     commitFieldDraft,
     getRecordsForType,
     viewPreferencesByTypeId,
-    updateField: handleUpdateField,
   });
 
   const renderFieldInput = (property: ObjectTypeProperty) => {

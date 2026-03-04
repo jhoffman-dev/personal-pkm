@@ -1,5 +1,20 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { dataThunks, useAppDispatch, useAppSelector } from "@/store";
+import {
+  companiesDataRuntime,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import { notesDataRuntime, useNotesEntityStateFacade } from "@/features/notes";
+import { peopleDataRuntime, usePeopleStateFacade } from "@/features/people";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
+import { useAppDispatch } from "@/store";
 import ForceGraph2D from "react-force-graph-2d";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -32,34 +47,34 @@ function formatPersonName(firstName?: string, lastName?: string): string {
 
 export function GraphPage() {
   const dispatch = useAppDispatch();
-  const projectsState = useAppSelector((state) => state.projects);
-  const notesState = useAppSelector((state) => state.notes);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const meetingsState = useAppSelector((state) => state.meetings);
-  const companiesState = useAppSelector((state) => state.companies);
-  const peopleState = useAppSelector((state) => state.people);
+  const { projectsState } = useProjectsStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { peopleState } = usePeopleStateFacade();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [graphSize, setGraphSize] = useState({ width: 900, height: 600 });
 
   useEffect(() => {
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
     if (notesState.status === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
     if (companiesState.status === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
     if (peopleState.status === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesState.status,

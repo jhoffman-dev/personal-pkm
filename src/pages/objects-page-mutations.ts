@@ -23,7 +23,13 @@ import {
   mappedSystemFieldKey,
   type SystemEntityCollection,
 } from "@/pages/objects-page-helpers";
-import { dataThunks, type AppDispatch } from "@/store";
+import { companiesDataRuntime } from "@/features/companies";
+import { meetingsDataRuntime } from "@/features/meetings";
+import { notesDataRuntime } from "@/features/notes";
+import { peopleDataRuntime } from "@/features/people";
+import { projectsDataRuntime } from "@/features/projects";
+import { tasksDataRuntime } from "@/features/tasks";
+import { type AppDispatch } from "@/store";
 
 type SyncBidirectionalConnection = (params: {
   sourceRecordId: string;
@@ -46,119 +52,107 @@ export async function createRecordForType(params: {
   );
 
   if (targetSystemCollection === "people") {
-    const created = await dispatch(
-      dataThunks.people.createOne({
-        firstName: "New",
-        lastName: "Person",
-        photoUrl: "",
-        tags: [],
-        email: "",
-        phone: "",
-        address: "",
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await peopleDataRuntime.createOne(dispatch, {
+      firstName: "New",
+      lastName: "Person",
+      photoUrl: "",
+      tags: [],
+      email: "",
+      phone: "",
+      address: "",
+      companyIds: [],
+      projectIds: [],
+      noteIds: [],
+      taskIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   }
 
   if (targetSystemCollection === "companies") {
-    const created = await dispatch(
-      dataThunks.companies.createOne({
-        name: "New Company",
-        photoUrl: "",
-        tags: [],
-        email: "",
-        phone: "",
-        address: "",
-        website: "",
-        personIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await companiesDataRuntime.createOne(dispatch, {
+      name: "New Company",
+      photoUrl: "",
+      tags: [],
+      email: "",
+      phone: "",
+      address: "",
+      website: "",
+      personIds: [],
+      projectIds: [],
+      noteIds: [],
+      taskIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   }
 
   if (targetSystemCollection === "projects") {
-    const created = await dispatch(
-      dataThunks.projects.createOne({
-        name: "New Project",
-        paraType: "project",
-        description: "",
-        tags: [],
-        personIds: [],
-        companyIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await projectsDataRuntime.createOne(dispatch, {
+      name: "New Project",
+      paraType: "project",
+      description: "",
+      tags: [],
+      personIds: [],
+      companyIds: [],
+      noteIds: [],
+      taskIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   }
 
   if (targetSystemCollection === "notes") {
-    const created = await dispatch(
-      dataThunks.notes.createOne({
-        title: "New Note",
-        body: "<p></p>",
-        tags: [],
-        relatedNoteIds: [],
-        personIds: [],
-        companyIds: [],
-        projectIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await notesDataRuntime.createOne(dispatch, {
+      title: "New Note",
+      body: "<p></p>",
+      tags: [],
+      relatedNoteIds: [],
+      personIds: [],
+      companyIds: [],
+      projectIds: [],
+      taskIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   }
 
   if (targetSystemCollection === "tasks") {
-    const created = await dispatch(
-      dataThunks.tasks.createOne({
-        title: "New Task",
-        description: "",
-        notes: "",
-        tags: [],
-        status: "inbox",
-        level: "task",
-        parentTaskId: null,
-        dueDate: undefined,
-        personIds: [],
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await tasksDataRuntime.createOne(dispatch, {
+      title: "New Task",
+      description: "",
+      notes: "",
+      tags: [],
+      status: "inbox",
+      level: "task",
+      parentTaskId: null,
+      dueDate: undefined,
+      personIds: [],
+      companyIds: [],
+      projectIds: [],
+      noteIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   }
 
   if (targetSystemCollection === "meetings") {
-    const created = await dispatch(
-      dataThunks.meetings.createOne({
-        title: "New Meeting",
-        tags: [],
-        scheduledFor: new Date().toISOString(),
-        location: "",
-        personIds: [],
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-      }),
-    ).unwrap();
+    const created = await meetingsDataRuntime.createOne(dispatch, {
+      title: "New Meeting",
+      tags: [],
+      scheduledFor: new Date().toISOString(),
+      location: "",
+      personIds: [],
+      companyIds: [],
+      projectIds: [],
+      noteIds: [],
+      taskIds: [],
+    });
 
     return created.id;
   }
@@ -181,62 +175,50 @@ function dispatchSystemFieldUpdate(params: {
   }
 
   if (collection === "people") {
-    void dispatch(
-      dataThunks.people.updateOne({
-        id: objectRecordId,
-        input: { [mappedField]: nextStringValue } as Partial<Person>,
-      }),
-    );
+    void peopleDataRuntime.updateOne(dispatch, {
+      id: objectRecordId,
+      input: { [mappedField]: nextStringValue } as Partial<Person>,
+    });
     return true;
   }
 
   if (collection === "companies") {
-    void dispatch(
-      dataThunks.companies.updateOne({
-        id: objectRecordId,
-        input: { [mappedField]: nextStringValue } as Partial<Company>,
-      }),
-    );
+    void companiesDataRuntime.updateOne(dispatch, {
+      id: objectRecordId,
+      input: { [mappedField]: nextStringValue } as Partial<Company>,
+    });
     return true;
   }
 
   if (collection === "projects") {
-    void dispatch(
-      dataThunks.projects.updateOne({
-        id: objectRecordId,
-        input: { [mappedField]: nextStringValue } as Partial<Project>,
-      }),
-    );
+    void projectsDataRuntime.updateOne(dispatch, {
+      id: objectRecordId,
+      input: { [mappedField]: nextStringValue } as Partial<Project>,
+    });
     return true;
   }
 
   if (collection === "notes") {
-    void dispatch(
-      dataThunks.notes.updateOne({
-        id: objectRecordId,
-        input: { [mappedField]: nextStringValue } as Partial<Note>,
-      }),
-    );
+    void notesDataRuntime.updateOne(dispatch, {
+      id: objectRecordId,
+      input: { [mappedField]: nextStringValue } as Partial<Note>,
+    });
     return true;
   }
 
   if (collection === "tasks") {
-    void dispatch(
-      dataThunks.tasks.updateOne({
-        id: objectRecordId,
-        input: { [mappedField]: nextStringValue } as Partial<Task>,
-      }),
-    );
+    void tasksDataRuntime.updateOne(dispatch, {
+      id: objectRecordId,
+      input: { [mappedField]: nextStringValue } as Partial<Task>,
+    });
     return true;
   }
 
   if (collection === "meetings") {
-    void dispatch(
-      dataThunks.meetings.updateOne({
-        id: objectRecordId,
-        input: { [mappedField]: nextStringValue } as Partial<Meeting>,
-      }),
-    );
+    void meetingsDataRuntime.updateOne(dispatch, {
+      id: objectRecordId,
+      input: { [mappedField]: nextStringValue } as Partial<Meeting>,
+    });
     return true;
   }
 
@@ -347,20 +329,16 @@ export function deleteRecord(params: {
   const { selectedSystemCollection, selectedRecordId, dispatch } = params;
 
   if (selectedSystemCollection === "people") {
-    void dispatch(dataThunks.people.deleteOne(selectedRecordId))
-      .unwrap()
-      .then(() => {
-        deleteObjectRecord(selectedRecordId);
-      });
+    void peopleDataRuntime.deleteOne(dispatch, selectedRecordId).then(() => {
+      deleteObjectRecord(selectedRecordId);
+    });
     return;
   }
 
   if (selectedSystemCollection === "companies") {
-    void dispatch(dataThunks.companies.deleteOne(selectedRecordId))
-      .unwrap()
-      .then(() => {
-        deleteObjectRecord(selectedRecordId);
-      });
+    void companiesDataRuntime.deleteOne(dispatch, selectedRecordId).then(() => {
+      deleteObjectRecord(selectedRecordId);
+    });
     return;
   }
 

@@ -10,12 +10,22 @@ import { useSharedTagSuggestions } from "@/hooks/use-shared-tag-suggestions";
 import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import { uploadEntityImageForUser } from "@/lib/entity-images-storage";
 import { firebaseAuth } from "@/lib/firebase";
+import { peopleDataRuntime, usePeopleStateFacade } from "@/features/people";
 import {
-  dataActions,
-  dataThunks,
-  useAppDispatch,
-  useAppSelector,
-} from "@/store";
+  companiesDataRuntime,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import { notesDataRuntime, useNotesEntityStateFacade } from "@/features/notes";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
+import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -27,12 +37,12 @@ function formatPersonName(lastName?: string, firstName?: string): string {
 
 export function PeoplePage() {
   const dispatch = useAppDispatch();
-  const peopleState = useAppSelector((state) => state.people);
-  const companiesState = useAppSelector((state) => state.companies);
-  const projectsState = useAppSelector((state) => state.projects);
-  const notesState = useAppSelector((state) => state.notes);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const meetingsState = useAppSelector((state) => state.meetings);
+  const { peopleState, setSelectedPersonId } = usePeopleStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
 
   const [draftFirstName, setDraftFirstName] = useState("");
   const [draftLastName, setDraftLastName] = useState("");
@@ -61,22 +71,22 @@ export function PeoplePage() {
 
   useEffect(() => {
     if (peopleState.status === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
     if (companiesState.status === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
     if (notesState.status === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesState.status,
@@ -127,12 +137,12 @@ export function PeoplePage() {
       return;
     }
 
-    dispatch(dataActions.people.setSelectedId(sortedPeople[0]?.id ?? null));
+    setSelectedPersonId(sortedPeople[0]?.id ?? null);
   }, [
-    dispatch,
     peopleState.entities,
     peopleState.selectedId,
     peopleState.status,
+    setSelectedPersonId,
     sortedPeople,
   ]);
 
@@ -225,25 +235,23 @@ export function PeoplePage() {
     }
 
     const timeout = window.setTimeout(() => {
-      void dispatch(
-        dataThunks.people.updateOne({
-          id: selectedPerson.id,
-          input: {
-            firstName: nextFirstName,
-            lastName: nextLastName,
-            email: draftEmail,
-            phone: draftPhone,
-            address: draftAddress,
-            photoUrl: draftPhotoUrl,
-            tags: draftTags,
-            companyIds: draftCompanyIds,
-            projectIds: draftProjectIds,
-            noteIds: draftNoteIds,
-            taskIds: draftTaskIds,
-            meetingIds: draftMeetingIds,
-          },
-        }),
-      );
+      void peopleDataRuntime.updateOne(dispatch, {
+        id: selectedPerson.id,
+        input: {
+          firstName: nextFirstName,
+          lastName: nextLastName,
+          email: draftEmail,
+          phone: draftPhone,
+          address: draftAddress,
+          photoUrl: draftPhotoUrl,
+          tags: draftTags,
+          companyIds: draftCompanyIds,
+          projectIds: draftProjectIds,
+          noteIds: draftNoteIds,
+          taskIds: draftTaskIds,
+          meetingIds: draftMeetingIds,
+        },
+      });
     }, 400);
 
     return () => window.clearTimeout(timeout);
@@ -320,7 +328,7 @@ export function PeoplePage() {
 
   const createPerson = async () => {
     const createdId = await createQuickPerson("New Person");
-    dispatch(dataActions.people.setSelectedId(createdId));
+    setSelectedPersonId(createdId);
   };
 
   const addTag = () => {

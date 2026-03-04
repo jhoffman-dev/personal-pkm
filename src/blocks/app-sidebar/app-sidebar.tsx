@@ -3,25 +3,35 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar";
 import * as React from "react";
 import { useLocation } from "react-router-dom";
 import { getRouteTitle, isRouteActive } from "@/routes/navigation";
-import { Button } from "@/components/ui/button";
+import { useAppDispatch } from "@/store";
 import {
-  dataActions,
-  notesTabsActions,
-  tasksViewActions,
-  useAppDispatch,
-  useAppSelector,
-} from "@/store";
+  companiesStateFacade,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsStateFacade,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import {
+  notesEntityStateFacade,
+  useNotesEntityStateFacade,
+  useNotesTabsFacade,
+} from "@/features/notes";
+import { peopleStateFacade, usePeopleStateFacade } from "@/features/people";
+import {
+  projectsStateFacade,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import {
+  useTasksEntityStateFacade,
+  useTasksViewFacade,
+} from "@/features/tasks";
 import { AppSidebarAssistantSection } from "@/blocks/app-sidebar/app-sidebar-assistant-section";
 import { useAppSidebarAssistantState } from "@/blocks/app-sidebar/app-sidebar-assistant-state";
 import { buildAppSidebarCreateActions } from "@/blocks/app-sidebar/app-sidebar-create-actions";
@@ -39,14 +49,14 @@ import { AppSidebarTasksSection } from "@/blocks/app-sidebar/app-sidebar-tasks-s
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const dispatch = useAppDispatch();
-  const notesState = useAppSelector((state) => state.notes);
-  const notesTabsState = useAppSelector((state) => state.notesTabs);
-  const projectsState = useAppSelector((state) => state.projects);
-  const meetingsState = useAppSelector((state) => state.meetings);
-  const companiesState = useAppSelector((state) => state.companies);
-  const peopleState = useAppSelector((state) => state.people);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const tasksViewState = useAppSelector((state) => state.tasksView);
+  const { notesState } = useNotesEntityStateFacade();
+  const { activeTabId, openNoteTab, replaceActiveTab } = useNotesTabsFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { peopleState } = usePeopleStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { selectedProjectId, setSelectedProjectId } = useTasksViewFacade();
   const { setOpen } = useSidebar();
   const { pathname } = useLocation();
   const activeTitle = getRouteTitle(pathname);
@@ -115,21 +125,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleSelectNote = (noteId: string) => {
-    dispatch(notesTabsActions.replaceActiveTab(noteId));
-    dispatch(dataActions.notes.setSelectedId(noteId));
+    replaceActiveTab(noteId);
+    notesEntityStateFacade.setSelectedNoteId(noteId);
   };
 
   const handleOpenNoteInBackground = (noteId: string) => {
-    dispatch(
-      notesTabsActions.openNoteTab({
-        id: noteId,
-        activate: false,
-      }),
-    );
+    openNoteTab({
+      id: noteId,
+      activate: false,
+    });
   };
 
   const handleSelectTaskProject = (projectId: string | null) => {
-    dispatch(tasksViewActions.setSelectedProjectId(projectId));
+    setSelectedProjectId(projectId);
   };
 
   const handleCreateMeeting = () => {
@@ -137,11 +145,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleSelectMeeting = (meetingId: string) => {
-    dispatch(dataActions.meetings.setSelectedId(meetingId));
+    meetingsStateFacade.setSelectedMeetingId(meetingId);
   };
 
   const handleSelectProject = (projectId: string) => {
-    dispatch(dataActions.projects.setSelectedId(projectId));
+    projectsStateFacade.setSelectedProjectId(projectId);
   };
 
   const handleCreateCompany = () => {
@@ -149,7 +157,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleSelectCompany = (companyId: string) => {
-    dispatch(dataActions.companies.setSelectedId(companyId));
+    companiesStateFacade.setSelectedCompanyId(companyId);
   };
 
   const handleCreatePerson = () => {
@@ -157,7 +165,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleSelectPerson = (personId: string) => {
-    dispatch(dataActions.people.setSelectedId(personId));
+    peopleStateFacade.setSelectedPersonId(personId);
   };
 
   return (
@@ -189,13 +197,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           {isNotesRoute ? (
             <AppSidebarNotesSection
               notes={sortedNotes}
-              activeTabId={notesTabsState.activeTabId}
+              activeTabId={activeTabId}
               onSelectNote={handleSelectNote}
               onOpenNoteBackground={handleOpenNoteInBackground}
             />
           ) : isTasksRoute ? (
             <AppSidebarTasksSection
-              selectedProjectId={tasksViewState.selectedProjectId}
+              selectedProjectId={selectedProjectId}
               allTaskCount={allTaskCount}
               projectsWithTaskCount={projectsWithTaskCount}
               onSelectProject={handleSelectTaskProject}

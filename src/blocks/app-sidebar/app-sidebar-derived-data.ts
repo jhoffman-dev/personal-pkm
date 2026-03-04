@@ -1,15 +1,23 @@
-import type { ParaType } from "@/data/entities";
+import type {
+  Company,
+  Meeting,
+  Note,
+  ParaType,
+  Person,
+  Project,
+  Task,
+} from "@/data/entities";
+import type { EntityRuntimeState } from "@/features/shared/application/entity-runtime-state";
 import { normalizeParaType } from "@/lib/project-defaults";
-import type { RootState } from "@/store";
 import * as React from "react";
 
 export function useAppSidebarDerivedData(params: {
-  notesState: RootState["notes"];
-  projectsState: RootState["projects"];
-  meetingsState: RootState["meetings"];
-  companiesState: RootState["companies"];
-  peopleState: RootState["people"];
-  tasksState: RootState["tasks"];
+  notesState: EntityRuntimeState<Note>;
+  projectsState: EntityRuntimeState<Project>;
+  meetingsState: EntityRuntimeState<Meeting>;
+  companiesState: EntityRuntimeState<Company>;
+  peopleState: EntityRuntimeState<Person>;
+  tasksState: EntityRuntimeState<Task>;
 }) {
   const {
     notesState,

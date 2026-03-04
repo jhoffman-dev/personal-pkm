@@ -1,4 +1,10 @@
-import { dataActions, dataThunks, type AppDispatch } from "@/store";
+import { companiesDataRuntime } from "@/features/companies";
+import { meetingsDataRuntime } from "@/features/meetings";
+import { notesDataRuntime, notesEntityStateFacade } from "@/features/notes";
+import { peopleDataRuntime } from "@/features/people";
+import { projectsDataRuntime } from "@/features/projects";
+import { tasksDataRuntime } from "@/features/tasks";
+import { type AppDispatch } from "@/store";
 import * as React from "react";
 
 export function useAppSidebarRouteDataEffects(params: {
@@ -38,47 +44,47 @@ export function useAppSidebarRouteDataEffects(params: {
 
   React.useEffect(() => {
     if (isNotesRoute && notesStatus === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, isNotesRoute, notesStatus]);
 
   React.useEffect(() => {
     if (isNotesRoute && !notesSelectedId && sortedNotes.length > 0) {
-      dispatch(dataActions.notes.setSelectedId(sortedNotes[0].id));
+      notesEntityStateFacade.setSelectedNoteId(sortedNotes[0].id);
     }
-  }, [dispatch, isNotesRoute, notesSelectedId, sortedNotes]);
+  }, [isNotesRoute, notesSelectedId, sortedNotes]);
 
   React.useEffect(() => {
     if (isTasksRoute && projectsStatus === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
 
     if (isTasksRoute && tasksStatus === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, isTasksRoute, projectsStatus, tasksStatus]);
 
   React.useEffect(() => {
     if (isMeetingsRoute && meetingsStatus === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, isMeetingsRoute, meetingsStatus]);
 
   React.useEffect(() => {
     if (isProjectsRoute && projectsStatus === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, isProjectsRoute, projectsStatus]);
 
   React.useEffect(() => {
     if (isCompaniesRoute && companiesStatus === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
   }, [companiesStatus, dispatch, isCompaniesRoute]);
 
   React.useEffect(() => {
     if (isPeopleRoute && peopleStatus === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, isPeopleRoute, peopleStatus]);
 }

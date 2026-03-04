@@ -29,3 +29,13 @@ export {
   buildQuickTaskCreateInput,
   buildStoryCreateInput,
 } from "@/features/tasks/application/build-quick-create-inputs";
+export {
+  tasksViewFacade,
+  useTasksViewFacade,
+} from "@/features/tasks/application/tasks-state-facade";
+export {
+  tasksEntityStateFacade,
+  useTasksEntityStateFacade,
+} from "@/features/tasks/application/tasks-entity-state-facade";
+export { tasksDataRuntime } from "@/features/tasks/application/tasks-data-runtime";
+export { useTasksEntityStore } from "@/features/tasks/state";

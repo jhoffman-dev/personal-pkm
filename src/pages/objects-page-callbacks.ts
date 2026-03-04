@@ -53,11 +53,6 @@ export function buildObjectsPageCallbacks(params: {
   ) => void;
   getRecordsForType: (typeId: string) => ObjectRecord[];
   viewPreferencesByTypeId: Record<string, ObjectsViewMode>;
-  updateField: (
-    objectRecordId: string,
-    property: ObjectTypeProperty,
-    value: unknown,
-  ) => void;
 }) {
   const {
     dispatch,
@@ -78,7 +73,6 @@ export function buildObjectsPageCallbacks(params: {
     commitFieldDraft,
     getRecordsForType,
     viewPreferencesByTypeId,
-    updateField,
   } = params;
 
   const getResolvedPictureUrl = (
@@ -149,7 +143,6 @@ export function buildObjectsPageCallbacks(params: {
     navigateToConnectedRecordFromNavigation({
       targetTypeId,
       targetRecordId,
-      dispatch,
       navigate,
     });
   };

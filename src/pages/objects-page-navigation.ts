@@ -1,56 +1,54 @@
 import { getSystemCollectionForObjectType } from "@/pages/objects-page-helpers";
-import {
-  dataActions,
-  notesTabsActions,
-  tasksViewActions,
-  type AppDispatch,
-} from "@/store";
+import { companiesStateFacade } from "@/features/companies";
+import { meetingsStateFacade } from "@/features/meetings";
+import { notesEntityStateFacade } from "@/features/notes";
+import { peopleStateFacade } from "@/features/people";
+import { notesTabsFacade } from "@/features/notes";
+import { projectsStateFacade } from "@/features/projects";
+import { tasksEntityStateFacade, tasksViewFacade } from "@/features/tasks";
 
 export function navigateToConnectedRecord(params: {
   targetTypeId: string;
   targetRecordId: string;
-  dispatch: AppDispatch;
   navigate: (to: string) => void;
 }): void {
-  const { targetTypeId, targetRecordId, dispatch, navigate } = params;
+  const { targetTypeId, targetRecordId, navigate } = params;
   const targetSystemCollection = getSystemCollectionForObjectType(targetTypeId);
 
   if (targetSystemCollection === "notes") {
-    dispatch(
-      notesTabsActions.openNoteTab({ id: targetRecordId, activate: true }),
-    );
-    dispatch(dataActions.notes.setSelectedId(targetRecordId));
+    notesTabsFacade.openNoteTab({ id: targetRecordId, activate: true });
+    notesEntityStateFacade.setSelectedNoteId(targetRecordId);
     navigate("/notes");
     return;
   }
 
   if (targetSystemCollection === "tasks") {
-    dispatch(dataActions.tasks.setSelectedId(targetRecordId));
-    dispatch(tasksViewActions.setExpandedTaskId(targetRecordId));
+    tasksEntityStateFacade.setSelectedTaskId(targetRecordId);
+    tasksViewFacade.setExpandedTaskId(targetRecordId);
     navigate("/tasks");
     return;
   }
 
   if (targetSystemCollection === "projects") {
-    dispatch(dataActions.projects.setSelectedId(targetRecordId));
+    projectsStateFacade.setSelectedProjectId(targetRecordId);
     navigate("/projects");
     return;
   }
 
   if (targetSystemCollection === "people") {
-    dispatch(dataActions.people.setSelectedId(targetRecordId));
+    peopleStateFacade.setSelectedPersonId(targetRecordId);
     navigate("/people");
     return;
   }
 
   if (targetSystemCollection === "companies") {
-    dispatch(dataActions.companies.setSelectedId(targetRecordId));
+    companiesStateFacade.setSelectedCompanyId(targetRecordId);
     navigate("/companies");
     return;
   }
 
   if (targetSystemCollection === "meetings") {
-    dispatch(dataActions.meetings.setSelectedId(targetRecordId));
+    meetingsStateFacade.setSelectedMeetingId(targetRecordId);
     navigate("/meetings");
     return;
   }

@@ -17,11 +17,21 @@ import {
 import { createEmptyNoteInput, DEFAULT_NOTE_TITLE } from "@/lib/note-defaults";
 import { createEmptyTaskInput } from "@/lib/task-defaults";
 import {
-  dataActions,
-  dataThunks,
-  useAppDispatch,
-  useAppSelector,
-} from "@/store";
+  companiesDataRuntime,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import { notesDataRuntime, useNotesEntityStateFacade } from "@/features/notes";
+import { peopleDataRuntime, usePeopleStateFacade } from "@/features/people";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
+import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -68,12 +78,12 @@ function DashboardListCard({
 
 export function ProjectsPage() {
   const dispatch = useAppDispatch();
-  const projectsState = useAppSelector((state) => state.projects);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const notesState = useAppSelector((state) => state.notes);
-  const meetingsState = useAppSelector((state) => state.meetings);
-  const peopleState = useAppSelector((state) => state.people);
-  const companiesState = useAppSelector((state) => state.companies);
+  const { projectsState, setSelectedProjectId } = useProjectsStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
+  const { peopleState } = usePeopleStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
 
   const [draftName, setDraftName] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
@@ -89,22 +99,22 @@ export function ProjectsPage() {
 
   useEffect(() => {
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
     if (notesState.status === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
     if (peopleState.status === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
     if (companiesState.status === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesState.status,
@@ -138,12 +148,12 @@ export function ProjectsPage() {
       return;
     }
 
-    dispatch(dataActions.projects.setSelectedId(sortedProjects[0]?.id ?? null));
+    setSelectedProjectId(sortedProjects[0]?.id ?? null);
   }, [
-    dispatch,
     projectsState.entities,
     projectsState.selectedId,
     projectsState.status,
+    setSelectedProjectId,
     sortedProjects,
   ]);
 
@@ -225,22 +235,20 @@ export function ProjectsPage() {
     }
 
     const timeout = window.setTimeout(() => {
-      void dispatch(
-        dataThunks.projects.updateOne({
-          id: selectedProject.id,
-          input: {
-            name: draftName.trim() || "Untitled project",
-            description: draftDescription,
-            tags: draftTags,
-            paraType: draftParaType,
-            taskIds: draftTaskIds,
-            noteIds: draftNoteIds,
-            meetingIds: draftMeetingIds,
-            personIds: draftPersonIds,
-            companyIds: draftCompanyIds,
-          },
-        }),
-      );
+      void projectsDataRuntime.updateOne(dispatch, {
+        id: selectedProject.id,
+        input: {
+          name: draftName.trim() || "Untitled project",
+          description: draftDescription,
+          tags: draftTags,
+          paraType: draftParaType,
+          taskIds: draftTaskIds,
+          noteIds: draftNoteIds,
+          meetingIds: draftMeetingIds,
+          personIds: draftPersonIds,
+          companyIds: draftCompanyIds,
+        },
+      });
     }, 500);
 
     return () => window.clearTimeout(timeout);
@@ -414,15 +422,14 @@ export function ProjectsPage() {
     .filter((value): value is string => Boolean(value));
 
   const createProject = async () => {
-    const created = await dispatch(
-      dataThunks.projects.createOne(
-        createEmptyProjectInput({
-          name: "New Project",
-        }),
-      ),
-    ).unwrap();
+    const created = await projectsDataRuntime.createOne(
+      dispatch,
+      createEmptyProjectInput({
+        name: "New Project",
+      }),
+    );
 
-    dispatch(dataActions.projects.setSelectedId(created.id));
+    setSelectedProjectId(created.id);
   };
 
   const addTag = () => {
@@ -441,45 +448,40 @@ export function ProjectsPage() {
   };
 
   const createQuickTask = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.tasks.createOne(
-        createEmptyTaskInput({
-          title: label.trim() || "New task",
-          status: "inbox",
-        }),
-      ),
-    ).unwrap();
+    const created = await tasksDataRuntime.createOne(
+      dispatch,
+      createEmptyTaskInput({
+        title: label.trim() || "New task",
+        status: "inbox",
+      }),
+    );
 
     return created.id;
   };
 
   const createQuickNote = async (label: string) => {
     const title = label.trim() || DEFAULT_NOTE_TITLE;
-    const created = await dispatch(
-      dataThunks.notes.createOne({
-        ...createEmptyNoteInput(),
-        title,
-        body: `<h1>${title}</h1><p></p>`,
-      }),
-    ).unwrap();
+    const created = await notesDataRuntime.createOne(dispatch, {
+      ...createEmptyNoteInput(),
+      title,
+      body: `<h1>${title}</h1><p></p>`,
+    });
 
     return created.id;
   };
 
   const createQuickMeeting = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.meetings.createOne({
-        title: label.trim() || "New meeting",
-        tags: [],
-        scheduledFor: new Date().toISOString(),
-        location: "",
-        personIds: [],
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-      }),
-    ).unwrap();
+    const created = await meetingsDataRuntime.createOne(dispatch, {
+      title: label.trim() || "New meeting",
+      tags: [],
+      scheduledFor: new Date().toISOString(),
+      location: "",
+      personIds: [],
+      companyIds: [],
+      projectIds: [],
+      noteIds: [],
+      taskIds: [],
+    });
 
     return created.id;
   };
@@ -490,36 +492,32 @@ export function ProjectsPage() {
     const firstName = parts[0] || "New";
     const lastName = parts.slice(1).join(" ") || "Person";
 
-    const created = await dispatch(
-      dataThunks.people.createOne({
-        firstName,
-        lastName,
-        tags: [],
-        email: "",
-        companyIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await peopleDataRuntime.createOne(dispatch, {
+      firstName,
+      lastName,
+      tags: [],
+      email: "",
+      companyIds: [],
+      projectIds: [],
+      noteIds: [],
+      taskIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   };
 
   const createQuickCompany = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.companies.createOne({
-        name: label.trim() || "New company",
-        tags: [],
-        website: "",
-        personIds: [],
-        projectIds: [],
-        noteIds: [],
-        taskIds: [],
-        meetingIds: [],
-      }),
-    ).unwrap();
+    const created = await companiesDataRuntime.createOne(dispatch, {
+      name: label.trim() || "New company",
+      tags: [],
+      website: "",
+      personIds: [],
+      projectIds: [],
+      noteIds: [],
+      taskIds: [],
+      meetingIds: [],
+    });
 
     return created.id;
   };

@@ -380,6 +380,16 @@ export function SimpleEditor({
   );
   const [toolbarHeight, setToolbarHeight] = useState(0);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const lastEmittedContentRef = useRef<string | null>(null);
+
+  const deferToMicrotask = useCallback((callback: () => void) => {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(callback);
+      return;
+    }
+
+    window.setTimeout(callback, 0);
+  }, []);
 
   const showUploadToast = useCallback((message: string) => {
     setUploadToastMessage(message);
@@ -496,12 +506,27 @@ export function SimpleEditor({
       const html = editorInstance.getHTML();
 
       if (hasLinkedTitle) {
-        onTitleChange?.(extractTitle(editorInstance));
-        onContentChange?.(html);
+        if (lastEmittedContentRef.current === html) {
+          return;
+        }
+
+        lastEmittedContentRef.current = html;
+        deferToMicrotask(() => {
+          if (editorInstance.isDestroyed) {
+            return;
+          }
+          onTitleChange?.(extractTitle(editorInstance));
+          onContentChange?.(html);
+        });
         return;
       }
 
       if (typeof window === "undefined") {
+        if (lastEmittedContentRef.current === html) {
+          return;
+        }
+
+        lastEmittedContentRef.current = html;
         onContentChange?.(html);
         return;
       }
@@ -521,9 +546,25 @@ export function SimpleEditor({
 
       const normalized =
         doc.body.innerHTML.trim() || DEFAULT_STANDALONE_CONTENT;
-      onContentChange?.(normalized);
+      if (lastEmittedContentRef.current === normalized) {
+        return;
+      }
+
+      lastEmittedContentRef.current = normalized;
+      deferToMicrotask(() => {
+        if (editorInstance.isDestroyed) {
+          return;
+        }
+        onContentChange?.(normalized);
+      });
     },
-    [extractTitle, hasLinkedTitle, onContentChange, onTitleChange],
+    [
+      deferToMicrotask,
+      extractTitle,
+      hasLinkedTitle,
+      onContentChange,
+      onTitleChange,
+    ],
   );
 
   const editor = useEditor({
@@ -653,15 +694,25 @@ export function SimpleEditor({
 
     const current = editor.getHTML();
     if (current !== normalizedContent) {
-      editor.commands.setContent(normalizedContent, { emitUpdate: false });
+      deferToMicrotask(() => {
+        if (editor.isDestroyed) {
+          return;
+        }
 
-      if (hasLinkedTitle) {
-        ensureFirstLineHeading(editor);
-        onTitleChange?.(extractTitle(editor));
-      }
+        const latest = editor.getHTML();
+        if (latest !== normalizedContent) {
+          editor.commands.setContent(normalizedContent, { emitUpdate: false });
+        }
+
+        if (hasLinkedTitle) {
+          ensureFirstLineHeading(editor);
+          onTitleChange?.(extractTitle(editor));
+        }
+      });
     }
   }, [
     content,
+    deferToMicrotask,
     editor,
     ensureFirstLineHeading,
     extractTitle,

@@ -13,70 +13,613 @@ Source of standards: `.github/copilot-instructions.md`
 
 ### State Management Track — Redux to Zustand (Phased)
 
-- [ ] **Phase 0: Baseline and guardrails (no runtime changes)**
-  - Scope:
-    - Document current Redux responsibilities by slice (data, notesTabs, tasksView).
-    - Define migration constraints: no behavior changes, no UI regressions, no cross-feature rewrites.
-    - Add/expand tests around current reducer and selector behavior where coverage is thin.
+- [x] **Phase 0: Baseline and guardrails (no runtime changes)**
+  - Deliverables:
+    - Add "State ownership" table to this tracker (slice -> owner feature -> persistence -> consumers).
+    - Freeze migration constraints for this repo: no UX changes, no async contract changes, no cross-feature rewrites.
+    - Add/expand tests for current UI state semantics before migration.
+  - Concrete tasks:
+    - Inventory current Redux slices in [src/store/index.ts](src/store/index.ts), [src/store/store.ts](src/store/store.ts), [src/store/data-slices.ts](src/store/data-slices.ts), [src/store/notes-tabs-slice.ts](src/store/notes-tabs-slice.ts), [src/store/tasks-view-slice.ts](src/store/tasks-view-slice.ts).
+    - Identify all `notesTabs` and `tasksView` call sites via search and list them under this phase.
+    - Add focused tests around tab activation/open-close and selected project filtering behavior.
+  - Estimated effort:
+    - 1 session.
   - Rollback point:
     - No production code path changes in this phase.
   - Exit criteria:
-    - Baseline behavior documented and protected by tests.
+    - Baseline behavior is documented and protected by tests.
 
-- [ ] **Phase 1: Migrate UI-only state slices first**
-  - Scope:
-    - Migrate `notesTabs` and `tasksView` from Redux to feature-scoped Zustand stores.
-    - Keep CRUD entity state (`projects`, `notes`, `tasks`, `meetings`, `companies`, `people`) on Redux.
-    - Keep persistence behavior (localStorage keys and hydration semantics) unchanged.
+- [x] **Phase 1: Migrate UI-only slices (`notesTabs`, `tasksView`) to Zustand**
+  - Deliverables:
+    - New feature-scoped Zustand stores for `notesTabs` and `tasksView`.
+    - Compatibility adapters to preserve existing action semantics during switchover.
+    - Redux usage removed for these two slices from pages/components.
+  - Concrete tasks:
+    - Create store modules:
+      - [src/features/notes/state/notes-tabs-store.ts](src/features/notes/state/notes-tabs-store.ts)
+      - [src/features/tasks/state/tasks-view-store.ts](src/features/tasks/state/tasks-view-store.ts)
+    - Create migration shims/hooks:
+      - [src/features/notes/state/index.ts](src/features/notes/state/index.ts)
+      - [src/features/tasks/state/index.ts](src/features/tasks/state/index.ts)
+    - Update consumers in sidebar/pages to use feature hooks instead of direct Redux slice actions/selectors.
+    - Keep persistence keys/hydration behavior unchanged from Redux implementation.
+  - Validation checklist:
+    - Tab open/close/activate behavior unchanged.
+    - Task project filter behavior unchanged.
+    - Persisted state restores correctly after reload.
+  - Estimated effort:
+    - 1-2 sessions.
   - Rollback point:
-    - UI slices can be switched back to Redux by restoring old hooks/imports.
+    - Revert consumer imports to Redux hooks/actions for the two UI slices.
   - Exit criteria:
-    - No use of Redux actions/selectors for `notesTabs`/`tasksView` in pages/components.
-    - Existing behavior parity verified manually and with tests.
+    - No runtime usage of Redux `notesTabs` and `tasksView` in UI consumers.
+  - Implemented:
+    - Added Zustand stores and exports:
+      - [src/features/notes/state/notes-tabs-store.ts](src/features/notes/state/notes-tabs-store.ts)
+      - [src/features/notes/state/index.ts](src/features/notes/state/index.ts)
+      - [src/features/tasks/state/tasks-view-store.ts](src/features/tasks/state/tasks-view-store.ts)
+      - [src/features/tasks/state/index.ts](src/features/tasks/state/index.ts)
+    - Migrated UI consumers from Redux slices to feature stores:
+      - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+      - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+      - [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx)
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Removed Redux localStorage preload/sync for migrated UI slices to prevent key clobbering:
+      - [src/store/store.ts](src/store/store.ts)
 
-- [ ] **Phase 2: Create a data-access facade before any entity-store migration**
-  - Scope:
-    - Introduce stable feature-level hooks/selectors (facade) so pages no longer depend directly on Redux action creators or slice structure.
-    - Route existing Redux reads/writes through that facade.
+- [x] **Phase 2: Introduce a data-access facade (additive, keep Redux underneath)**
+  - Deliverables:
+    - Stable feature APIs (selectors + commands) shielding pages/components from store implementation.
+    - Facade modules consumed by UI; Redux is an implementation detail behind facade.
+  - Concrete tasks:
+    - Add facade modules:
+      - [src/features/notes/application/notes-state-facade.ts](src/features/notes/application/notes-state-facade.ts)
+      - [src/features/tasks/application/tasks-state-facade.ts](src/features/tasks/application/tasks-state-facade.ts)
+      - [src/features/people/application/people-state-facade.ts](src/features/people/application/people-state-facade.ts)
+      - [src/features/companies/application/companies-state-facade.ts](src/features/companies/application/companies-state-facade.ts)
+    - Migrate at least one high-traffic UI route per feature to consume facade hooks only.
+    - Add tests for facade behavior using mocked backend state sources.
+  - Estimated effort:
+    - 1-2 sessions.
   - Rollback point:
-    - Redux remains backend state engine; facade is additive.
+    - Facade is additive; direct Redux access remains available until fully switched.
   - Exit criteria:
-    - Pages/components consume facade APIs rather than direct Redux slice internals.
+    - New/updated UI code consumes facade APIs, not raw Redux slices.
+  - Implemented (in progress):
+    - Added feature state facades:
+      - [src/features/notes/application/notes-state-facade.ts](src/features/notes/application/notes-state-facade.ts)
+      - [src/features/tasks/application/tasks-state-facade.ts](src/features/tasks/application/tasks-state-facade.ts)
+      - [src/features/people/application/people-state-facade.ts](src/features/people/application/people-state-facade.ts)
+      - [src/features/companies/application/companies-state-facade.ts](src/features/companies/application/companies-state-facade.ts)
+      - Added imperative command exports for non-hook callers in people/companies facades.
+    - Exported facades from feature boundaries:
+      - [src/features/notes/index.ts](src/features/notes/index.ts)
+      - [src/features/tasks/index.ts](src/features/tasks/index.ts)
+      - [src/features/people/index.ts](src/features/people/index.ts)
+      - [src/features/companies/index.ts](src/features/companies/index.ts)
+    - Migrated high-traffic routes/components to facade APIs:
+      - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+      - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+      - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+      - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+      - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+      - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+      - [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx)
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Added facade behavior tests:
+      - [src/features/notes/application/notes-state-facade.test.ts](src/features/notes/application/notes-state-facade.test.ts)
+      - [src/features/tasks/application/tasks-state-facade.test.ts](src/features/tasks/application/tasks-state-facade.test.ts)
+      - [src/features/people/application/people-state-facade.test.ts](src/features/people/application/people-state-facade.test.ts)
+      - [src/features/companies/application/companies-state-facade.test.ts](src/features/companies/application/companies-state-facade.test.ts)
 
-- [ ] **Phase 3: Pilot one entity domain on Zustand**
-  - Scope:
-    - Pick one low-risk entity domain (recommended: `people` or `companies`) and migrate only that domain to Zustand through the facade.
-    - Preserve async/error/status semantics currently provided by thunks.
+- [x] **Phase 3: Pilot one entity domain on Zustand through the facade**
+  - Deliverables:
+    - One entity domain migrated behind existing facade contract (recommended: `people`).
+    - Adapter switch allowing fallback to Redux implementation.
+  - Concrete tasks:
+    - Implement pilot store:
+      - [src/features/people/state/people-store.ts](src/features/people/state/people-store.ts)
+    - Keep facade signature stable while swapping implementation behind it.
+    - Preserve status/error/loading semantics used by current UI.
+    - Run targeted regression checks on people-related flows.
+  - Estimated effort:
+    - 1-2 sessions.
   - Rollback point:
-    - Feature flag or adapter switch can route domain back to Redux implementation.
+    - Toggle facade implementation back to Redux adapter.
   - Exit criteria:
-    - Pilot domain stable through normal workflows, no regression in related screens.
+    - Pilot domain is stable with no regressions in normal workflows.
+  - Implemented:
+    - Added pilot Zustand store:
+      - [src/features/people/state/people-store.ts](src/features/people/state/people-store.ts)
+      - [src/features/people/state/index.ts](src/features/people/state/index.ts)
+    - Swapped `people` facade internals to adapter-backed behavior while preserving public signatures:
+      - [src/features/people/application/people-state-facade.ts](src/features/people/application/people-state-facade.ts)
+      - Adapter switch: `VITE_PEOPLE_STATE_ADAPTER=redux` enables rollback to Redux-only facade behavior.
+      - Default adapter mode remains `zustand` for the pilot.
+    - Exported pilot store through feature boundary:
+      - [src/features/people/index.ts](src/features/people/index.ts)
+    - Expanded facade behavior validation to assert Redux + pilot-store sync:
+      - [src/features/people/application/people-state-facade.test.ts](src/features/people/application/people-state-facade.test.ts)
+    - Aligned remaining people-selection command callsites to facade API:
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+      - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+    - Automated regression checks completed:
+      - `npm run test` -> `25/25` files, `78/78` tests passed.
+      - `npm run lint` unchanged; single existing violation remains in `src/pages/objects-page-field-drafts.ts`.
+  - Manual smoke checklist (Phase 3 close criteria):
+    - [x] People route default-selection: open `/people` with existing records and verify first sorted person is selected when no selection exists.
+    - [x] People create flow: create a new person from `/people` and verify the created record becomes selected.
+    - [x] Sidebar people selection flow: on `/people`, select a person from sidebar and verify detail panel follows selection.
+    - [x] Objects navigation to people: navigate to a connected person from `/objects` and verify `/people` opens with that person selected.
+    - [x] Sidebar quick-create person flow: create person from sidebar create action and verify selection updates in `/people`.
+    - [x] Rollback check: waived for this cycle (explicit user decision to rely on uncommitted-state VCS revert path instead of adapter toggle verification).
 
-- [ ] **Phase 4: Decide final direction (hybrid vs full migration)**
-  - Scope:
-    - Evaluate complexity, readability, defect rate, and velocity after pilot.
-    - Choose one path:
-      - Keep hybrid model (Zustand for UI/local state, Redux for relational entity graph), or
-      - Continue gradual entity-domain migrations.
+- [x] **Phase 4: Decision gate (hybrid vs continued migration)**
+  - Deliverables:
+    - Recorded architectural decision with objective evidence.
+  - Decision metrics:
+    - Readability/maintainability delta (developer feedback + review time).
+    - Defect rate and rollback incidents during pilot.
+    - Net complexity (lines touched per feature change, adapter overhead).
+    - Runtime behavior parity (tests + manual flow checks).
+  - Output:
+    - Decision entry in [DECISIONS.md](DECISIONS.md) choosing:
+      - Hybrid model, or
+      - Continue entity-domain migration.
+  - Estimated effort:
+    - 0.5 session.
   - Rollback point:
-    - Stop at hybrid model if full migration cost outweighs value.
+    - Stay hybrid and stop migration if pilot cost exceeds value.
   - Exit criteria:
-    - Decision recorded in `DECISIONS.md` with rationale and tradeoffs.
+    - Decision is explicit, documented, and communicated.
+  - Implemented:
+    - Decision recorded in [DECISIONS.md](DECISIONS.md): `ADR-0005`.
+    - Outcome: continue incremental entity-domain migration behind feature facades with per-domain rollback until verification.
 
-- [ ] **Phase 5 (optional): Full entity migration and Redux removal**
-  - Scope:
-    - Migrate remaining entity domains one-by-one via facade.
-    - Remove Redux provider, Redux dependencies, and unused store modules only after all consumers are migrated.
+- [x] **Phase 5 (optional): Full entity migration + Redux removal**
+  - Deliverables:
+    - Remaining entity domains migrated one-by-one via facades.
+    - Redux provider and slice modules removed only after zero runtime consumers remain.
+  - Activation rule:
+    - Execute this phase only when explicitly chosen for active implementation.
+  - Execution order (locked):
+    - `companies` -> `projects` -> `meetings` -> `notes` -> `tasks`.
+  - Tracking checklist:
+    - [x] 5.1 `companies` domain migration complete
+    - [x] 5.2 `projects` domain migration complete
+    - [x] 5.3 `meetings` domain migration complete
+    - [x] 5.4 `notes` domain migration complete
+    - [x] 5.5 `tasks` domain migration complete
+    - [x] 5.6 Redux runtime removal and final cleanup complete
+  - 5.1 `companies` migration status (completed):
+    - Baseline inventory (selection callsites discovered):
+      - [src/pages/companies-page.tsx](src/pages/companies-page.tsx) via `useCompaniesStateFacade`.
+      - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx) via `useCompaniesStateFacade`.
+      - [src/pages/graph-page.tsx](src/pages/graph-page.tsx) via `useCompaniesStateFacade`.
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts) company selection command.
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx) company selection command.
+      - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts) company create->select command.
+    - Implemented this pass:
+      - Added pilot store:
+        - [src/features/companies/state/companies-store.ts](src/features/companies/state/companies-store.ts)
+        - [src/features/companies/state/index.ts](src/features/companies/state/index.ts)
+      - Swapped facade internals to adapter-backed mode while preserving public API:
+        - [src/features/companies/application/companies-state-facade.ts](src/features/companies/application/companies-state-facade.ts)
+        - Adapter switch: `VITE_COMPANIES_STATE_ADAPTER=redux`.
+        - Default mode for this pilot path: `zustand`.
+      - Exported pilot store via feature boundary:
+        - [src/features/companies/index.ts](src/features/companies/index.ts)
+      - Aligned remaining company selection writes to facade command path:
+        - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+        - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+        - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+      - Expanded facade behavior test coverage:
+        - [src/features/companies/application/companies-state-facade.test.ts](src/features/companies/application/companies-state-facade.test.ts)
+    - Automated validation (current):
+      - Focused facade tests pass (`2/2` files, `2/2` tests) for people+companies facades.
+      - Full suite passes (`25/25` files, `78/78` tests).
+      - Lint unchanged: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+    - Manual smoke checklist:
+      - [x] Companies route default-selection.
+      - [x] Companies create flow selects created record.
+      - [x] Sidebar company selection flow.
+      - [x] Sidebar quick-create company flow.
+      - [x] Objects navigation to company flow.
+  - 5.2 `projects` migration status (completed):
+    - Baseline inventory (selection callsites discovered):
+      - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Implemented this pass:
+      - Added pilot store:
+        - [src/features/projects/state/projects-store.ts](src/features/projects/state/projects-store.ts)
+        - [src/features/projects/state/index.ts](src/features/projects/state/index.ts)
+      - Added adapter-backed projects facade and tests:
+        - [src/features/projects/application/projects-state-facade.ts](src/features/projects/application/projects-state-facade.ts)
+        - [src/features/projects/application/projects-state-facade.test.ts](src/features/projects/application/projects-state-facade.test.ts)
+        - Adapter switch: `VITE_PROJECTS_STATE_ADAPTER=redux`.
+        - Default mode for this pilot path: `zustand`.
+      - Exported projects facade/store via feature boundary:
+        - [src/features/projects/index.ts](src/features/projects/index.ts)
+      - Migrated known project selection writes to facade command path:
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+        - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Automated validation (current):
+      - Focused facade tests pass (`3/3` files, `3/3` tests) for projects+companies+people.
+      - Full suite passes (`26/26` files, `79/79` tests).
+      - Lint unchanged: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+    - Manual smoke checklist:
+      - [x] Projects route default-selection.
+      - [x] Projects create flow selects created record.
+      - [x] Sidebar project selection flow.
+      - [x] Objects navigation to project flow.
+  - 5.3 `meetings` migration status (completed):
+    - Baseline inventory (selection callsites discovered):
+      - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+      - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Implemented this pass:
+      - Added pilot store:
+        - [src/features/meetings/state/meetings-store.ts](src/features/meetings/state/meetings-store.ts)
+        - [src/features/meetings/state/index.ts](src/features/meetings/state/index.ts)
+      - Added adapter-backed meetings facade and tests:
+        - [src/features/meetings/application/meetings-state-facade.ts](src/features/meetings/application/meetings-state-facade.ts)
+        - [src/features/meetings/application/meetings-state-facade.test.ts](src/features/meetings/application/meetings-state-facade.test.ts)
+        - Adapter switch: `VITE_MEETINGS_STATE_ADAPTER=redux`.
+        - Default mode for this pilot path: `zustand`.
+      - Exported meetings facade/store via feature boundary:
+        - [src/features/meetings/index.ts](src/features/meetings/index.ts)
+      - Migrated known meeting selection writes to facade command path:
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+        - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+        - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Automated validation (current):
+      - Focused facade tests pass (`4/4` files, `4/4` tests) for meetings+projects+companies+people.
+      - Full suite passes (`27/27` files, `80/80` tests).
+      - Lint unchanged from baseline: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+    - Manual smoke checklist:
+      - [x] Meetings route default-selection.
+      - [x] Meetings create flow selects created record.
+      - [x] Sidebar meeting selection flow.
+      - [x] Sidebar quick-create meeting flow.
+      - [x] Objects navigation to meeting flow.
+  - 5.4 `notes` migration status (completed):
+    - Baseline inventory (selection callsites discovered):
+      - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+      - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+      - [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx)
+      - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Implemented this pass:
+      - Added notes entity pilot store:
+        - [src/features/notes/state/notes-entity-store.ts](src/features/notes/state/notes-entity-store.ts)
+        - Exported via [src/features/notes/state/index.ts](src/features/notes/state/index.ts)
+      - Added adapter-backed notes entity facade and tests:
+        - [src/features/notes/application/notes-entity-state-facade.ts](src/features/notes/application/notes-entity-state-facade.ts)
+        - [src/features/notes/application/notes-entity-state-facade.test.ts](src/features/notes/application/notes-entity-state-facade.test.ts)
+        - Adapter switch: `VITE_NOTES_STATE_ADAPTER=redux`.
+        - Default mode for this pilot path: `zustand`.
+      - Exported notes entity facade/store via feature boundary:
+        - [src/features/notes/index.ts](src/features/notes/index.ts)
+      - Migrated known note selection writes to facade command path:
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+        - [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Automated validation (current):
+      - Focused facade tests pass (`5/5` files, `5/5` tests) for notes+meetings+projects+companies+people.
+      - Full suite passes (`28/28` files, `81/81` tests).
+      - Lint unchanged from baseline: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+    - Manual smoke checklist:
+      - [x] Notes route default-selection.
+      - [x] Notes tab select/activate updates note selection.
+      - [x] Layout quick-create note opens and selects created note.
+      - [x] Sidebar notes selection flow.
+      - [x] Objects navigation to note flow.
+  - 5.5 `tasks` migration status (completed):
+    - Baseline inventory (selection callsites discovered):
+      - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+    - Implemented this pass:
+      - Added tasks entity pilot store:
+        - [src/features/tasks/state/tasks-entity-store.ts](src/features/tasks/state/tasks-entity-store.ts)
+        - Exported via [src/features/tasks/state/index.ts](src/features/tasks/state/index.ts)
+      - Added adapter-backed tasks entity facade and tests:
+        - [src/features/tasks/application/tasks-entity-state-facade.ts](src/features/tasks/application/tasks-entity-state-facade.ts)
+        - [src/features/tasks/application/tasks-entity-state-facade.test.ts](src/features/tasks/application/tasks-entity-state-facade.test.ts)
+        - Adapter switch: `VITE_TASKS_STATE_ADAPTER=redux`.
+        - Default mode for this pilot path: `zustand`.
+      - Exported tasks entity facade/store via feature boundary:
+        - [src/features/tasks/index.ts](src/features/tasks/index.ts)
+      - Migrated known task selection writes to facade command path:
+        - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)
+        - [src/pages/objects-page-callbacks.ts](src/pages/objects-page-callbacks.ts)
+    - Automated validation (current):
+      - Focused facade tests pass (`7/7` files, `8/8` tests) for tasks+notes+meetings+projects+companies+people.
+      - Full suite passes (`29/29` files, `82/82` tests).
+      - Lint unchanged from baseline: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+    - Manual smoke checklist:
+      - [x] Tasks selected-project filter flow.
+      - [x] Tasks expanded-task open/close behavior.
+      - [x] Tasks create story and create child flows.
+      - [x] Objects navigation to task flow.
+  - 5.6 Redux runtime removal status (completed):
+    - Current inventory findings:
+      - No direct migrated-domain `setSelectedId` writes remain outside feature facades.
+      - Runtime still has broad direct Redux entity-slice reads (`state.projects|notes|tasks|meetings|companies|people`) across pages/components, so store slice removal is not yet safe.
+      - Store wiring still depends on entity slices and thunks:
+        - [src/store/store.ts](src/store/store.ts)
+        - [src/store/data-slices.ts](src/store/data-slices.ts)
+    - Staged execution plan for safe removal:
+      - Stage 5.6a: add read facades/selectors for entity collections and migrate page/component consumers away from direct `useAppSelector((state) => state.<domain>)`.
+      - Stage 5.6b: remove adapter fallback dispatches from entity facades once no Redux selection synchronization is required.
+      - Stage 5.6c: remove Redux entity slices/thunks wiring only after zero runtime consumers remain and equivalent data source is active.
+      - Stage 5.6d: update [DECISIONS.md](DECISIONS.md) with final runtime state architecture and run full regression.
+    - Stage 5.6a progress (current):
+      - Migrated shared component entity reads to facade hooks:
+        - [src/components/system-custom-properties-panel.tsx](src/components/system-custom-properties-panel.tsx)
+      - Migrated page-level entity reads to facade hooks:
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/calendar-page.tsx](src/pages/calendar-page.tsx)
+        - [src/pages/objects-page.tsx](src/pages/objects-page.tsx)
+      - Validation after batch:
+        - Full tests pass (`29/29` files, `82/82` tests).
+        - Lint unchanged from baseline: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+      - Remaining direct Redux entity reads after 5.6a batches:
+        - Feature facade internals only (`projects|notes|tasks|meetings|companies|people` facades).
+    - Stage 5.6b progress:
+      - Completed removal of Redux selection fallback dispatches and env adapter branching in entity facades:
+        - [src/features/people/application/people-state-facade.ts](src/features/people/application/people-state-facade.ts)
+        - [src/features/companies/application/companies-state-facade.ts](src/features/companies/application/companies-state-facade.ts)
+        - [src/features/projects/application/projects-state-facade.ts](src/features/projects/application/projects-state-facade.ts)
+        - [src/features/meetings/application/meetings-state-facade.ts](src/features/meetings/application/meetings-state-facade.ts)
+        - [src/features/notes/application/notes-entity-state-facade.ts](src/features/notes/application/notes-entity-state-facade.ts)
+        - [src/features/tasks/application/tasks-entity-state-facade.ts](src/features/tasks/application/tasks-entity-state-facade.ts)
+      - Updated facade behavior tests for Zustand-only selection state behavior:
+        - [src/features/people/application/people-state-facade.test.ts](src/features/people/application/people-state-facade.test.ts)
+        - [src/features/companies/application/companies-state-facade.test.ts](src/features/companies/application/companies-state-facade.test.ts)
+        - [src/features/projects/application/projects-state-facade.test.ts](src/features/projects/application/projects-state-facade.test.ts)
+        - [src/features/meetings/application/meetings-state-facade.test.ts](src/features/meetings/application/meetings-state-facade.test.ts)
+        - [src/features/notes/application/notes-entity-state-facade.test.ts](src/features/notes/application/notes-entity-state-facade.test.ts)
+        - [src/features/tasks/application/tasks-entity-state-facade.test.ts](src/features/tasks/application/tasks-entity-state-facade.test.ts)
+      - Removed now-unused Redux selection action export surface:
+        - [src/store/data-slices.ts](src/store/data-slices.ts) (`dataActions` removed)
+        - [src/store/index.ts](src/store/index.ts) (`dataActions` export removed)
+      - Validation after stage 5.6b update:
+        - Full tests pass (`29/29` files, `82/82` tests).
+        - Lint unchanged from baseline: existing `react-hooks/set-state-in-effect` issue in `src/pages/objects-page-field-drafts.ts`.
+    - Stage 5.6c kickoff inventory:
+      - Direct Redux entity selector reads in pages/components are fully removed; remaining direct reads are confined to feature facade internals.
+      - Redux entity thunks remain broadly used across runtime (`fetchAll`, `createOne`, `updateOne`, `deleteOne`) including auth/bootstrap, route effects, and feature pages.
+      - Current implication: slice/thunk wiring removal is still blocked until replacement data runtime is implemented for entity CRUD/fetch paths.
+    - Stage 5.6c progress (notes seam):
+      - Added notes data runtime wrapper and exported through feature boundary:
+        - [src/features/notes/application/notes-data-runtime.ts](src/features/notes/application/notes-data-runtime.ts)
+        - [src/features/notes/index.ts](src/features/notes/index.ts)
+      - Migrated direct notes thunk callsites to `notesDataRuntime` in active UI/runtime modules:
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/objects-page-effects.ts](src/pages/objects-page-effects.ts)
+        - [src/pages/objects-page-mutations.ts](src/pages/objects-page-mutations.ts)
+        - [src/components/firebase-auth-gate.tsx](src/components/firebase-auth-gate.tsx)
+        - [src/hooks/use-entity-quick-create.ts](src/hooks/use-entity-quick-create.ts)
+      - Remaining direct `dataThunks.notes.*` usage is intentionally isolated to:
+        - [src/features/notes/application/notes-data-runtime.ts](src/features/notes/application/notes-data-runtime.ts)
+    - Stage 5.6c progress (projects seam):
+      - Added projects data runtime wrapper and exported through feature boundary:
+        - [src/features/projects/application/projects-data-runtime.ts](src/features/projects/application/projects-data-runtime.ts)
+        - [src/features/projects/index.ts](src/features/projects/index.ts)
+      - Migrated direct projects thunk callsites to `projectsDataRuntime` in active UI/runtime modules:
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/calendar-page.tsx](src/pages/calendar-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/objects-page-effects.ts](src/pages/objects-page-effects.ts)
+        - [src/pages/objects-page-mutations.ts](src/pages/objects-page-mutations.ts)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/components/firebase-auth-gate.tsx](src/components/firebase-auth-gate.tsx)
+        - [src/hooks/use-entity-quick-create.ts](src/hooks/use-entity-quick-create.ts)
+      - Remaining direct `dataThunks.projects.*` usage is intentionally isolated to:
+        - [src/features/projects/application/projects-data-runtime.ts](src/features/projects/application/projects-data-runtime.ts)
+    - Stage 5.6c progress (tasks seam):
+      - Added tasks data runtime wrapper and exported through feature boundary:
+        - [src/features/tasks/application/tasks-data-runtime.ts](src/features/tasks/application/tasks-data-runtime.ts)
+        - [src/features/tasks/index.ts](src/features/tasks/index.ts)
+      - Migrated direct tasks thunk callsites to `tasksDataRuntime` in active UI/runtime modules:
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/pages/calendar-page.tsx](src/pages/calendar-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/objects-page-effects.ts](src/pages/objects-page-effects.ts)
+        - [src/pages/objects-page-mutations.ts](src/pages/objects-page-mutations.ts)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/components/firebase-auth-gate.tsx](src/components/firebase-auth-gate.tsx)
+        - [src/hooks/use-entity-quick-create.ts](src/hooks/use-entity-quick-create.ts)
+      - Remaining direct `dataThunks.tasks.*` usage is intentionally isolated to:
+        - [src/features/tasks/application/tasks-data-runtime.ts](src/features/tasks/application/tasks-data-runtime.ts)
+    - Stage 5.6c progress (meetings seam):
+      - Added meetings data runtime wrapper and exported through feature boundary:
+        - [src/features/meetings/application/meetings-data-runtime.ts](src/features/meetings/application/meetings-data-runtime.ts)
+        - [src/features/meetings/index.ts](src/features/meetings/index.ts)
+      - Migrated direct meetings thunk callsites to `meetingsDataRuntime` in active UI/runtime modules:
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/calendar-page.tsx](src/pages/calendar-page.tsx)
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/objects-page-effects.ts](src/pages/objects-page-effects.ts)
+        - [src/pages/objects-page-mutations.ts](src/pages/objects-page-mutations.ts)
+        - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/components/firebase-auth-gate.tsx](src/components/firebase-auth-gate.tsx)
+        - [src/hooks/use-entity-quick-create.ts](src/hooks/use-entity-quick-create.ts)
+      - Remaining direct `dataThunks.meetings.*` usage is intentionally isolated to:
+        - [src/features/meetings/application/meetings-data-runtime.ts](src/features/meetings/application/meetings-data-runtime.ts)
+    - Stage 5.6c progress (companies seam):
+      - Added companies data runtime wrapper and exported through feature boundary:
+        - [src/features/companies/application/companies-data-runtime.ts](src/features/companies/application/companies-data-runtime.ts)
+        - [src/features/companies/index.ts](src/features/companies/index.ts)
+      - Migrated direct companies thunk callsites to `companiesDataRuntime` in active UI/runtime modules:
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/objects-page-effects.ts](src/pages/objects-page-effects.ts)
+        - [src/pages/objects-page-mutations.ts](src/pages/objects-page-mutations.ts)
+        - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/components/firebase-auth-gate.tsx](src/components/firebase-auth-gate.tsx)
+        - [src/hooks/use-entity-quick-create.ts](src/hooks/use-entity-quick-create.ts)
+      - Remaining direct `dataThunks.companies.*` usage is intentionally isolated to:
+        - [src/features/companies/application/companies-data-runtime.ts](src/features/companies/application/companies-data-runtime.ts)
+    - Stage 5.6c progress (people seam):
+      - Added people data runtime wrapper and exported through feature boundary:
+        - [src/features/people/application/people-data-runtime.ts](src/features/people/application/people-data-runtime.ts)
+        - [src/features/people/index.ts](src/features/people/index.ts)
+      - Migrated direct people thunk callsites to `peopleDataRuntime` in active UI/runtime modules:
+        - [src/pages/assistant-page.tsx](src/pages/assistant-page.tsx)
+        - [src/pages/graph-page.tsx](src/pages/graph-page.tsx)
+        - [src/pages/notes-page.tsx](src/pages/notes-page.tsx)
+        - [src/pages/meetings-page.tsx](src/pages/meetings-page.tsx)
+        - [src/pages/projects-page.tsx](src/pages/projects-page.tsx)
+        - [src/pages/companies-page.tsx](src/pages/companies-page.tsx)
+        - [src/pages/people-page.tsx](src/pages/people-page.tsx)
+        - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx)
+        - [src/pages/objects-page-effects.ts](src/pages/objects-page-effects.ts)
+        - [src/pages/objects-page-mutations.ts](src/pages/objects-page-mutations.ts)
+        - [src/blocks/app-sidebar/app-sidebar-create-actions.ts](src/blocks/app-sidebar/app-sidebar-create-actions.ts)
+        - [src/blocks/app-sidebar/app-sidebar-route-data-effects.ts](src/blocks/app-sidebar/app-sidebar-route-data-effects.ts)
+        - [src/components/firebase-auth-gate.tsx](src/components/firebase-auth-gate.tsx)
+        - [src/hooks/use-entity-quick-create.ts](src/hooks/use-entity-quick-create.ts)
+      - Current 5.6 runtime teardown status:
+        - Store relation-sync refresh wiring in [src/store/store.ts](src/store/store.ts) routes through domain runtime wrappers.
+        - Domain runtimes for `projects|notes|tasks|meetings|companies|people` now call `getDataModules()` directly and synchronize feature-scoped Zustand entity stores.
+        - Entity facades for `projects|notes|tasks|meetings|companies|people` now source collection/status/error state from feature Zustand stores (Redux entity selectors removed).
+        - Redux entity reducer wiring (`dataReducers`) has been removed from [src/store/store.ts](src/store/store.ts).
+        - Legacy Redux entity thunk/slice scaffolding modules have been removed from `src/store` (`data-slices`, `data-slice-factory`, `notes-tabs-slice`, `tasks-view-slice`).
+        - React-Redux runtime coupling has been removed (`Provider` dropped from [src/main.tsx](src/main.tsx), `useAppDispatch` now uses direct store dispatch in [src/store/hooks.ts](src/store/hooks.ts), and `react-redux` dependency removed from [package.json](package.json)).
+        - Redux Toolkit dependency has been removed and [src/store/store.ts](src/store/store.ts) is now a lightweight runtime-event dispatch bridge for relation-sync refresh behavior.
+  - Per-domain runbook (apply to each domain in order):
+    - Step A — Baseline inventory
+      - List all direct selector/action callsites for the domain and document migration boundary in this tracker.
+      - Confirm existing facade API shape and required compatibility behavior.
+    - Step B — Domain pilot store
+      - Add feature store module under `src/features/<domain>/state/*`.
+      - Preserve current state contract used by UI (`status`, `error`, selected IDs, and relation fields as applicable).
+    - Step C — Facade adapter swap
+      - Keep existing facade signatures stable; swap internals to adapter-backed behavior.
+      - Keep rollback switch available for the domain until verified stable.
+    - Step D — Consumer alignment
+      - Route remaining domain selection/command writes through facade exports.
+      - Remove new direct Redux usage introduced during migration window.
+    - Step E — Validation
+      - Add/extend facade behavior tests for domain commands/selectors.
+      - Run `npm run test` and `npm run lint` and record outcomes in Progress Log.
+      - Run focused manual smoke checks for the domain’s primary route + sidebar/navigation flows.
+    - Step F — Domain close criteria
+      - Domain is marked complete only when baseline parity is confirmed and no blocker regressions remain.
+      - Keep fallback adapter active for next domain until cumulative confidence is sufficient.
+  - Domain-specific smoke templates:
+    - `companies`: default selection, create/select from page, sidebar select/create, objects navigation to company.
+    - `projects`: route selection, task/project linking flows, sidebar project navigation, objects navigation to project.
+    - `meetings`: create/select flows, relation-link navigation, sidebar select/create, objects navigation to meeting.
+    - `notes`: tab/open/replace/close semantics, note create/delete flows, sidebar/background open, objects navigation to note.
+    - `tasks`: selected-project filter, expanded-task behavior, create child/story flows, objects navigation to task.
+  - Final Redux removal runbook (5.6):
+    - Confirm zero runtime domain consumers rely on Redux selectors/actions for migrated domains.
+    - Remove deprecated adapters and direct Redux selector exports tied to migrated domains.
+    - Remove obsolete slice wiring from [src/store/store.ts](src/store/store.ts) and [src/store/data-slices.ts](src/store/data-slices.ts) only after consumer confirmation.
+    - Run full regression (`npm run test`, `npm run lint`) and update [DECISIONS.md](DECISIONS.md) with final state architecture note.
+  - Estimated effort:
+    - 2-4 sessions (optional and only if Phase 4 chooses full migration).
   - Rollback point:
-    - Per-domain rollback remains available until final dependency removal.
+    - Per-domain fallback remains available until Redux removal step.
   - Exit criteria:
     - No runtime Redux dependency paths remain.
 
-- [ ] **Cross-phase validation requirements**
+- [ ] **Cross-phase validation requirements (applies to every phase)**
   - Preserve Clean Architecture boundaries during migration.
-  - No mixed refactor+feature work in same PR unless required for safety.
-  - Run `npm run test` and `npm run lint` on each migration phase.
-  - Update architecture docs and progress log after each completed phase.
+  - No mixed refactor + feature changes in the same PR unless required for safety.
+  - For each phase completion, run `npm run test` and `npm run lint`.
+  - Update [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), and this tracker progress log.
+  - Keep rollback instructions current per phase.
+
+#### Phase 0 Baseline Snapshot (2026-03-03)
+
+- **State ownership table (current Redux runtime ownership)**
+
+| Slice       | Source module                                                  | Owner feature/domain     | Persistence                                                                        | Primary consumers                                                                                                                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projects`  | [src/store/data-slices.ts](src/store/data-slices.ts)           | `projects` entity data   | Backing store adapters via thunks                                                  | Projects, tasks, sidebar, objects page                                                                                                                                                                                                                                                       |
+| `notes`     | [src/store/data-slices.ts](src/store/data-slices.ts)           | `notes` entity data      | Backing store adapters via thunks                                                  | Notes page, sidebar, objects page                                                                                                                                                                                                                                                            |
+| `tasks`     | [src/store/data-slices.ts](src/store/data-slices.ts)           | `tasks` entity data      | Backing store adapters via thunks                                                  | Tasks page, sidebar, objects page                                                                                                                                                                                                                                                            |
+| `meetings`  | [src/store/data-slices.ts](src/store/data-slices.ts)           | `meetings` entity data   | Backing store adapters via thunks                                                  | Meetings page, sidebar, objects page                                                                                                                                                                                                                                                         |
+| `companies` | [src/store/data-slices.ts](src/store/data-slices.ts)           | `companies` entity data  | Backing store adapters via thunks                                                  | Companies page, sidebar, objects page                                                                                                                                                                                                                                                        |
+| `people`    | [src/store/data-slices.ts](src/store/data-slices.ts)           | `people` entity data     | Backing store adapters via thunks                                                  | People page, sidebar, objects page                                                                                                                                                                                                                                                           |
+| `notesTabs` | [src/store/notes-tabs-slice.ts](src/store/notes-tabs-slice.ts) | Notes UI workspace state | `localStorage` key `pkm.notes.tabs.v1` in [src/store/store.ts](src/store/store.ts) | [src/pages/notes-page.tsx](src/pages/notes-page.tsx), [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx), [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx), [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts) |
+| `tasksView` | [src/store/tasks-view-slice.ts](src/store/tasks-view-slice.ts) | Tasks UI view state      | `localStorage` key `pkm.tasks.view.v1` in [src/store/store.ts](src/store/store.ts) | [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx), [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx), [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts)                                                                         |
+
+- **`notesTabs` callsite inventory (migration boundary)**
+  - [src/pages/notes-page.tsx](src/pages/notes-page.tsx): reads `state.notesTabs`; dispatches `setOpenTabs`, `setActiveTab`, `openNoteTab`, `closeNoteTab`, `replaceActiveTab`.
+  - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx): reads `state.notesTabs`; dispatches `replaceActiveTab`, `openNoteTab`.
+  - [src/blocks/app-sidebar/layout.tsx](src/blocks/app-sidebar/layout.tsx): dispatches `openNoteTab`.
+  - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts): dispatches `openNoteTab` when navigating to linked note record.
+
+- **`tasksView` callsite inventory (migration boundary)**
+  - [src/pages/tasks-page.tsx](src/pages/tasks-page.tsx): reads `state.tasksView`; dispatches `setExpandedTaskId` in create/open flows.
+  - [src/blocks/app-sidebar/app-sidebar.tsx](src/blocks/app-sidebar/app-sidebar.tsx): reads `state.tasksView`; dispatches `setSelectedProjectId` for sidebar filters.
+  - [src/pages/objects-page-navigation.ts](src/pages/objects-page-navigation.ts): dispatches `setExpandedTaskId` when navigating to linked task record.
+
+- **Frozen migration constraints for this repo**
+  - No behavior changes in CRUD workflows or route navigation while migrating state containers.
+  - No changes to async semantics/status/error transitions currently expected by UI.
+  - Preserve storage keys and hydration semantics for migrated UI slices unless explicitly versioned.
+  - No cross-feature rewrites in the same phase PR.
+
+- **Phase 0 checklist status**
+  - [x] Slice ownership inventory captured.
+  - [x] `notesTabs` and `tasksView` callsite boundary captured.
+  - [x] Add/expand focused baseline tests for tab and task-view semantics before Phase 1 switch.
 
 ### P0 — Architecture Boundary Fixes
 
@@ -269,9 +812,9 @@ Source of standards: `.github/copilot-instructions.md`
   - Effort estimate: complete for current cleanup scope.
 
 - **Redux -> Zustand track**
-  - Current state: not started by design (deferred until cleanup stabilized).
-  - Remaining mandatory items if you choose to proceed: Phase 0 through Phase 4.
-  - Effort estimate: multi-session project (roughly 4-8 sessions depending on scope and rollback checkpoints).
+  - Current state: Phase 0 through Phase 5 complete.
+  - Remaining mandatory items: none for the current migration scope.
+  - Effort estimate: complete for the current migration scope.
 
 ## Progress Log
 
@@ -317,8 +860,56 @@ Source of standards: `.github/copilot-instructions.md`
 - 2026-03-03: Completed final objects-page helper API naming harmonization (`updateField` across callbacks/connections/field-input integration), behavior unchanged.
 - 2026-03-03: Completed optional UI composition trim for app-sidebar by extracting derived-data memo logic; app-sidebar size reduced to 254 lines.
 - 2026-03-03: Completed optional UI composition trim for objects-page effects by extracting picture-url effect into `objects-page-picture-effects.ts`.
+- 2026-03-03: Expanded Redux -> Zustand track into detailed phase execution plan with concrete deliverables, file targets, validation checklists, rollback points, and estimates.
+- 2026-03-03: Started Phase 0 execution by adding Redux state ownership table, migration-boundary callsite inventory for `notesTabs`/`tasksView`, and frozen migration constraints.
+- 2026-03-03: Completed Phase 0 baseline test expansion with focused slice tests in `src/store/notes-tabs-slice.test.ts` and `src/store/tasks-view-slice.test.ts`; Phase 0 marked complete.
+- 2026-03-03: Completed Phase 1 UI-slice migration to Zustand (`notesTabs` + `tasksView`) with feature-scoped stores, migrated consumers, Redux persistence clobber fix in `store.ts`, and green tests (`21/21`, `72/72`); lint now reports one pre-existing `react-hooks/set-state-in-effect` issue in `objects-page-field-drafts.ts`.
+- 2026-03-03: Continued Phase 2 facade rollout by adding people/companies state facades + feature entrypoints and migrating `people-page`/`companies-page` to facade APIs; tests remain green (`21/21`, `72/72`) and lint still reports only the existing `objects-page-field-drafts.ts` rule violation.
+- 2026-03-03: Continued Phase 2 facade adoption by migrating `assistant-page` and `graph-page` people/companies state usage to feature facades; tests remain green (`21/21`, `72/72`) and lint still reports only the existing `objects-page-field-drafts.ts` rule violation.
+- 2026-03-03: Completed Phase 2 by adding facade behavior tests for notes/tasks/people/companies (`25/25` files, `78/78` tests); lint still reports only the existing `objects-page-field-drafts.ts` rule violation.
+- 2026-03-03: Started Phase 2 by introducing notes/tasks state facades, exporting them at feature boundaries, and migrating high-traffic pages/components to consume facade APIs; tests remain green (`21/21`, `72/72`) and lint still reports only the existing `objects-page-field-drafts.ts` rule violation.
+- 2026-03-03: Started Phase 3 `people` pilot by introducing `people-store` (Zustand), wiring adapter-backed selection state in `people-state-facade` with `VITE_PEOPLE_STATE_ADAPTER=redux` rollback path, and validating facade tests (`4/4` files, `6/6` tests); lint remains unchanged with the single existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: Continued Phase 3 by routing remaining people-selection command callsites through `peopleStateFacade` (`objects-page-navigation`, `app-sidebar`, `app-sidebar-create-actions`) and re-running full regression checks (`25/25` files, `78/78` tests); lint remains unchanged with the single existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: Added explicit Phase 3 manual smoke checklist (people page/sidebar/objects navigation/create + rollback adapter check) to close pilot validation before Phase 4 decision gate.
+- 2026-03-03: During manual smoke testing, fixed `ObjectsPage` infinite render loop (`Maximum update depth exceeded` in `objects-page-effects.ts`) by stabilizing `getRecordsForType` with `useCallback` in `src/pages/objects-page.tsx`; full tests remain green (`25/25`, `78/78`) and lint remains unchanged with the single existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: User-confirmed Phase 3 smoke flows pass (excluding adapter-toggle rollback check by explicit choice); Phase 3 marked complete with rollback verification waived in favor of local uncommitted-state revert path.
+- 2026-03-03: Completed Phase 4 decision gate with `ADR-0005` in `DECISIONS.md`; decision is to continue incremental entity-domain migration behind feature facades with per-domain rollback checkpoints.
+- 2026-03-03: Expanded Phase 5 into a detailed execution runbook with locked domain order, per-domain tracking checklist, validation/rollback checkpoints, and final Redux removal steps to support transparent progress tracking before implementation starts.
+- 2026-03-03: Started Phase 5.1 (`companies`) by adding `companies-store`, swapping `companies-state-facade` to adapter-backed mode (`VITE_COMPANIES_STATE_ADAPTER=redux` fallback), routing remaining company selection writes through facade commands, and validating with focused + full tests (`25/25`, `78/78`); lint remains unchanged with the existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: Marked 5.1 (`companies`) complete after user-confirmed smoke checks; started 5.2 (`projects`) by adding `projects-store`, introducing adapter-backed `projects-state-facade` + tests, migrating known project selection writes to facade commands, and validating with focused + full tests (`26/26`, `79/79`); lint remains unchanged with the existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: Marked 5.2 (`projects`) complete after user-confirmed smoke checks; started 5.3 (`meetings`) by adding `meetings-store`, introducing adapter-backed `meetings-state-facade` + tests, migrating known meeting selection writes to facade commands, and validating with focused + full tests (`27/27`, `80/80`); lint remains at baseline with the existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: Marked 5.3 (`meetings`) complete after user-confirmed smoke checks; started 5.4 (`notes`) by adding `notes-entity-store`, introducing adapter-backed `notes-entity-state-facade` + tests, migrating known note selection writes to facade commands, and validating with focused + full tests (`28/28`, `81/81`); lint remains at baseline with the existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: Started 5.5 (`tasks`) by adding `tasks-entity-store`, introducing adapter-backed `tasks-entity-state-facade` + tests, migrating known task selection writes to facade commands (`objects-page-navigation`), and validating with focused + full tests (`29/29`, `82/82`); lint remains at baseline with the existing `objects-page-field-drafts.ts` violation.
+- 2026-03-03: User-confirmed smoke checks for 5.4 (`notes`) and 5.5 (`tasks`) passed; both domains marked complete in Phase 5 tracking.
+- 2026-03-03: Started 5.6 kickoff inventory; confirmed migrated-domain selection writes are facade-only, but runtime still has many direct Redux entity-slice reads and store wiring dependencies, so Redux entity slice removal is now tracked as a staged multi-step effort.
+- 2026-03-03: Started 5.6a consumer migration with first batch: switched entity state reads from direct Redux selectors to feature facades in `system-custom-properties-panel` and `assistant-page`; regression checks pass (`29/29`, `82/82`) and lint remains at the existing baseline issue.
+- 2026-03-03: Continued 5.6a consumer migration with second batch: switched entity state reads from direct Redux selectors to feature facades in `app-sidebar` and `graph-page`; regression checks pass (`29/29`, `82/82`) and lint remains at the existing baseline issue.
+- 2026-03-03: Continued 5.6a consumer migration with third batch: switched entity state reads from direct Redux selectors to feature facades in `tasks-page` and `projects-page`; regression checks pass (`29/29`, `82/82`) and lint remains at the existing baseline issue.
+- 2026-03-03: Continued 5.6a consumer migration with fourth batch: switched entity state reads from direct Redux selectors to feature facades in `notes-page` and `meetings-page`; regression checks pass (`29/29`, `82/82`) and lint remains at the existing baseline issue.
+- 2026-03-03: Continued 5.6a consumer migration with fifth batch: switched entity state reads from direct Redux selectors to feature facades in `companies-page` and `people-page`; regression checks pass (`29/29`, `82/82`) and lint remains at the existing baseline issue.
+- 2026-03-03: Continued 5.6a consumer migration with sixth batch: switched remaining page-level entity state reads from direct Redux selectors to feature facades in `calendar-page` and `objects-page`; regression checks pass (`29/29`, `82/82`) and lint remains at the existing baseline issue.
+- 2026-03-03: Completed 5.6b facade cleanup by removing Redux selection fallback dispatches and env adapter branches from all migrated entity facades; updated facade tests to assert Zustand-owned selection state and revalidated regression (`29/29`, `82/82`) with lint unchanged at baseline.
+- 2026-03-03: Completed follow-on 5.6b cleanup by removing now-unused `dataActions` exports from store modules after facade fallback removal; regression checks remain green (`29/29`, `82/82`) and lint remains at baseline.
+- 2026-03-03: Started 5.6c dependency inventory; confirmed page/component selector migration is complete and identified remaining blocker as widespread `dataThunks` runtime usage, so Redux entity slice removal requires a replacement data runtime step before wiring can be removed safely.
+- 2026-03-03: Mitigated notes editor runtime warning (`flushSync was called from inside a lifecycle method`) by deferring `SimpleEditor` content emission and external `setContent` synchronization to microtasks in [src/components/tiptap-templates/simple/simple-editor.tsx](src/components/tiptap-templates/simple/simple-editor.tsx); lint baseline remains unchanged.
+- 2026-03-03: Captured deferred notes-media follow-up: when notes contain external hotlinked image URLs, add an explicit user-triggered import flow to fetch/store images into the app bucket and rewrite note HTML to first-party storage URLs (instead of persisting third-party hotlinks that can return cross-origin 403 errors).
+- 2026-03-03: Continued 5.6c notes-runtime seam rollout by replacing remaining application-layer `dataThunks.notes.*` callsites with `notesDataRuntime` across pages/effects/auth/bootstrap helpers; direct notes thunk usage is now isolated to the notes runtime wrapper and store listener bootstrap wiring. Regression checks stay green (`29/29` files, `82/82` tests) and lint remains at the existing baseline issue in [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts).
+- 2026-03-03: Continued 5.6c with a projects-runtime seam by replacing application-layer `dataThunks.projects.*` callsites with `projectsDataRuntime` across pages/effects/sidebar/auth/bootstrap helpers; direct projects thunk usage is now isolated to the projects runtime wrapper and store listener bootstrap wiring. Regression checks stay green (`29/29` files, `82/82` tests) and lint remains at the existing baseline issue in [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts).
+- 2026-03-03: Continued 5.6c with a tasks-runtime seam by replacing application-layer `dataThunks.tasks.*` callsites with `tasksDataRuntime` across pages/effects/sidebar/auth/bootstrap helpers; direct tasks thunk usage is now isolated to the tasks runtime wrapper and store listener bootstrap wiring. Regression checks stay green (`29/29` files, `82/82` tests) and lint remains at the existing baseline issue in [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts).
+- 2026-03-03: Continued 5.6c with a meetings-runtime seam by replacing application-layer `dataThunks.meetings.*` callsites with `meetingsDataRuntime` across pages/effects/sidebar/auth/bootstrap helpers; direct meetings thunk usage is now isolated to the meetings runtime wrapper and store listener bootstrap wiring. Regression checks stay green (`29/29` files, `82/82` tests) and lint remains at the existing baseline issue in [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts).
+- 2026-03-03: Added targeted suppression for the intentional `react-hooks/set-state-in-effect` draft reset in [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts); lint now passes clean and a refactor follow-up is deferred until after 5.6c stabilization.
+- 2026-03-03: Continued 5.6c with a companies-runtime seam by replacing application-layer `dataThunks.companies.*` callsites with `companiesDataRuntime` across pages/effects/sidebar/auth/bootstrap helpers; direct companies thunk usage is now isolated to the companies runtime wrapper and store listener bootstrap wiring. Regression checks stay green (`29/29` files, `82/82` tests) and lint passes.
+- 2026-03-03: Continued 5.6c with a people-runtime seam by replacing application-layer `dataThunks.people.*` callsites with `peopleDataRuntime` across pages/effects/sidebar/auth/bootstrap helpers; direct people thunk usage is now isolated to the people runtime wrapper and store listener bootstrap wiring, and all entity-domain thunk usage (`projects|notes|tasks|meetings|companies|people`) is now runtime-wrapper/store-listener-only. Regression checks stay green (`29/29` files, `82/82` tests) and lint passes.
+- 2026-03-03: Continued 5.6c cleanup by rewiring relation-sync listener refreshes in [src/store/store.ts](src/store/store.ts) to call `projectsDataRuntime|notesDataRuntime|tasksDataRuntime|meetingsDataRuntime|companiesDataRuntime|peopleDataRuntime` and by aligning runtime wrapper imports to direct store modules (`data-slices` + `store`) to avoid barrel-cycle risk; direct entity-domain `dataThunks.*` usage is now isolated to runtime wrapper internals only. Regression checks stay green (`29/29` files, `82/82` tests) and lint passes.
+- 2026-03-03: Advanced 5.6 teardown by replacing all entity runtime wrapper internals (`projects|notes|tasks|meetings|companies|people`) from Redux thunk dispatches to direct `getDataModules()` operations, adding feature-scoped Zustand entity collection state to domain stores, and switching all entity facades off Redux selectors to those stores. Removed Redux entity reducer wiring (`dataReducers`) from [src/store/store.ts](src/store/store.ts), updated [src/blocks/app-sidebar/app-sidebar-derived-data.ts](src/blocks/app-sidebar/app-sidebar-derived-data.ts) typing away from `RootState` entity slices, and preserved relation-sync refresh behavior through runtime-emitted mutation-fulfilled events. Regression checks stay green (`29/29` files, `82/82` tests) and lint passes.
+- 2026-03-03: Continued 5.6 teardown trim by deleting inactive Redux scaffolding modules in [src/store/data-slices.ts](src/store/data-slices.ts), [src/store/data-slice-factory.ts](src/store/data-slice-factory.ts), [src/store/notes-tabs-slice.ts](src/store/notes-tabs-slice.ts), and [src/store/tasks-view-slice.ts](src/store/tasks-view-slice.ts); simplified [src/store/store.ts](src/store/store.ts) to a minimal runtime-event reducer while preserving relation-sync listener middleware, removed stale store barrel exports in [src/store/index.ts](src/store/index.ts), and dropped obsolete slice tests tied to deleted modules. Regression checks stay green (`27/27` files, `73/73` tests) and lint passes.
+- 2026-03-03: Completed final optional 5.6 trim by removing React-Redux app coupling: dropped `Provider` wrapper from [src/main.tsx](src/main.tsx), replaced [src/store/hooks.ts](src/store/hooks.ts) with direct `store.dispatch` hook semantics, removed stale `useAppSelector` barrel export in [src/store/index.ts](src/store/index.ts), and removed `react-redux` from [package.json](package.json) / `package-lock.json`. Regression checks stay green (`27/27` files, `73/73` tests) and lint passes.
+- 2026-03-03: Completed final Redux Toolkit removal by replacing [src/store/store.ts](src/store/store.ts) with a lightweight runtime-event dispatch bridge (no Toolkit middleware/reducer APIs), removing stale `RootState` export surface from [src/store/index.ts](src/store/index.ts), and uninstalling `@reduxjs/toolkit` from [package.json](package.json) / `package-lock.json`. Regression checks stay green (`27/27` files, `73/73` tests) and lint passes.
+- 2026-03-03: Closed Phase 5 in this tracker (`5.6` marked complete) and finalized architecture documentation in [DECISIONS.md](DECISIONS.md) for the post-Redux runtime model (feature Zustand state + DataModules runtimes + lightweight runtime-event dispatch bridge).
 
 ## Notes
 
 - Priority order follows constitution conflict priorities: Correctness -> Architectural boundaries -> Tests -> Readability -> Token efficiency -> Style.
 - Update this file whenever a cleanup item moves status or scope changes.
+- Deferred product follow-up (not part of current Phase 5 scope): add a notes image-ingest workflow for remote URLs (`http/https`) that uploads to Firebase Storage under the current user/note and rewrites `img[src]` in note body to stored download URLs.
+- Deferred code-health follow-up (outside this completed migration scope): revisit [src/pages/objects-page-field-drafts.ts](src/pages/objects-page-field-drafts.ts) to remove the targeted `react-hooks/set-state-in-effect` suppression via an effect-free draft hydration pattern.

@@ -8,13 +8,23 @@ import {
 } from "@/components/property-link-picker";
 import { useEntityQuickCreate } from "@/hooks/use-entity-quick-create";
 import { useSharedTagSuggestions } from "@/hooks/use-shared-tag-suggestions";
-import { addUnique, equalSet } from "@/lib/entity-link-utils";
 import {
-  dataActions,
-  dataThunks,
-  useAppDispatch,
-  useAppSelector,
-} from "@/store";
+  companiesDataRuntime,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import { notesDataRuntime, useNotesEntityStateFacade } from "@/features/notes";
+import { peopleDataRuntime, usePeopleStateFacade } from "@/features/people";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
+import { tasksDataRuntime, useTasksEntityStateFacade } from "@/features/tasks";
+import { addUnique, equalSet } from "@/lib/entity-link-utils";
+import { useAppDispatch } from "@/store";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -49,12 +59,12 @@ function fromDateTimeLocalValue(value: string): string {
 
 export function MeetingsPage() {
   const dispatch = useAppDispatch();
-  const meetingsState = useAppSelector((state) => state.meetings);
-  const peopleState = useAppSelector((state) => state.people);
-  const companiesState = useAppSelector((state) => state.companies);
-  const projectsState = useAppSelector((state) => state.projects);
-  const notesState = useAppSelector((state) => state.notes);
-  const tasksState = useAppSelector((state) => state.tasks);
+  const { meetingsState, setSelectedMeetingId } = useMeetingsStateFacade();
+  const { peopleState } = usePeopleStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { notesState } = useNotesEntityStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
 
   const [draftTitle, setDraftTitle] = useState("");
   const [draftScheduledFor, setDraftScheduledFor] = useState("");
@@ -78,22 +88,22 @@ export function MeetingsPage() {
 
   useEffect(() => {
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
     if (peopleState.status === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
     if (companiesState.status === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
     if (notesState.status === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesState.status,
@@ -136,12 +146,12 @@ export function MeetingsPage() {
       return;
     }
 
-    dispatch(dataActions.meetings.setSelectedId(sortedMeetings[0]?.id ?? null));
+    setSelectedMeetingId(sortedMeetings[0]?.id ?? null);
   }, [
-    dispatch,
     meetingsState.entities,
     meetingsState.selectedId,
     meetingsState.status,
+    setSelectedMeetingId,
     sortedMeetings,
   ]);
 
@@ -224,22 +234,20 @@ export function MeetingsPage() {
     }
 
     const timeout = window.setTimeout(() => {
-      void dispatch(
-        dataThunks.meetings.updateOne({
-          id: selectedMeeting.id,
-          input: {
-            title: nextTitle,
-            scheduledFor: nextScheduledFor,
-            location: draftLocation,
-            tags: draftTags,
-            personIds: draftPersonIds,
-            companyIds: draftCompanyIds,
-            projectIds: draftProjectIds,
-            noteIds: draftNoteIds,
-            taskIds: draftTaskIds,
-          },
-        }),
-      );
+      void meetingsDataRuntime.updateOne(dispatch, {
+        id: selectedMeeting.id,
+        input: {
+          title: nextTitle,
+          scheduledFor: nextScheduledFor,
+          location: draftLocation,
+          tags: draftTags,
+          personIds: draftPersonIds,
+          companyIds: draftCompanyIds,
+          projectIds: draftProjectIds,
+          noteIds: draftNoteIds,
+          taskIds: draftTaskIds,
+        },
+      });
     }, 400);
 
     return () => window.clearTimeout(timeout);
@@ -319,7 +327,7 @@ export function MeetingsPage() {
 
   const createMeeting = async () => {
     const createdId = await createQuickMeeting("New meeting");
-    dispatch(dataActions.meetings.setSelectedId(createdId));
+    setSelectedMeetingId(createdId);
   };
 
   const addTag = () => {

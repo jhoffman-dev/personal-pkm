@@ -19,7 +19,22 @@ import {
   buildQuickProjectCreateInput,
   buildQuickTaskCreateInput,
   buildSharedTagSuggestions,
+  tasksDataRuntime,
+  useTasksEntityStateFacade,
 } from "@/features/tasks";
+import {
+  companiesDataRuntime,
+  useCompaniesStateFacade,
+} from "@/features/companies";
+import {
+  meetingsDataRuntime,
+  useMeetingsStateFacade,
+} from "@/features/meetings";
+import { peopleDataRuntime, usePeopleStateFacade } from "@/features/people";
+import {
+  projectsDataRuntime,
+  useProjectsStateFacade,
+} from "@/features/projects";
 import {
   buildDeleteCurrentNotePlan,
   buildDeleteSameTitleNotesPlan,
@@ -27,8 +42,11 @@ import {
   buildNoteUpdateInputFromDraft,
   createNoteDraftState,
   hasNoteDraftChanges,
+  notesDataRuntime,
+  useNotesEntityStateFacade,
   reconcileNotesTabs,
   runNoteDeleteWorkflow,
+  useNotesTabsFacade,
 } from "@/features/notes";
 import { addUnique } from "@/lib/entity-link-utils";
 import { normalizeParaType } from "@/lib/project-defaults";
@@ -38,13 +56,7 @@ import {
   convertDrawingLinksToEmbedBlocks,
 } from "@/lib/drawing-links";
 import { listDrawings } from "@/lib/drawings-store";
-import {
-  dataActions,
-  dataThunks,
-  notesTabsActions,
-  useAppDispatch,
-  useAppSelector,
-} from "@/store";
+import { useAppDispatch } from "@/store";
 import { Trash2, X } from "lucide-react";
 import {
   useEffect,
@@ -71,13 +83,21 @@ function getTagColorStyle(tag: string): CSSProperties {
 
 export function NotesPage() {
   const dispatch = useAppDispatch();
-  const notesState = useAppSelector((state) => state.notes);
-  const notesTabsState = useAppSelector((state) => state.notesTabs);
-  const projectsState = useAppSelector((state) => state.projects);
-  const tasksState = useAppSelector((state) => state.tasks);
-  const meetingsState = useAppSelector((state) => state.meetings);
-  const companiesState = useAppSelector((state) => state.companies);
-  const peopleState = useAppSelector((state) => state.people);
+  const { notesState, setSelectedNoteId } = useNotesEntityStateFacade();
+  const {
+    openTabIds,
+    activeTabId,
+    openNoteTab,
+    setActiveTab,
+    replaceActiveTab,
+    closeNoteTab,
+    setOpenTabs,
+  } = useNotesTabsFacade();
+  const { projectsState } = useProjectsStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { peopleState } = usePeopleStateFacade();
 
   const sortedNotes = useMemo(
     () =>
@@ -92,16 +112,11 @@ export function NotesPage() {
     [notesState.entities, notesState.ids],
   );
 
-  const selectedNote = notesTabsState.activeTabId
-    ? notesState.entities[notesTabsState.activeTabId]
-    : null;
+  const selectedNote = activeTabId ? notesState.entities[activeTabId] : null;
 
   const openTabs = useMemo(
-    () =>
-      notesTabsState.openTabIds
-        .map((id) => notesState.entities[id])
-        .filter(Boolean),
-    [notesState.entities, notesTabsState.openTabIds],
+    () => openTabIds.map((id) => notesState.entities[id]).filter(Boolean),
+    [notesState.entities, openTabIds],
   );
 
   const [draftBody, setDraftBody] = useState(DEFAULT_NOTE_BODY);
@@ -283,25 +298,25 @@ export function NotesPage() {
 
   useEffect(() => {
     if (notesState.status === "idle") {
-      void dispatch(dataThunks.notes.fetchAll());
+      void notesDataRuntime.fetchAll(dispatch);
     }
   }, [dispatch, notesState.status]);
 
   useEffect(() => {
     if (projectsState.status === "idle") {
-      void dispatch(dataThunks.projects.fetchAll());
+      void projectsDataRuntime.fetchAll(dispatch);
     }
     if (tasksState.status === "idle") {
-      void dispatch(dataThunks.tasks.fetchAll());
+      void tasksDataRuntime.fetchAll(dispatch);
     }
     if (meetingsState.status === "idle") {
-      void dispatch(dataThunks.meetings.fetchAll());
+      void meetingsDataRuntime.fetchAll(dispatch);
     }
     if (companiesState.status === "idle") {
-      void dispatch(dataThunks.companies.fetchAll());
+      void companiesDataRuntime.fetchAll(dispatch);
     }
     if (peopleState.status === "idle") {
-      void dispatch(dataThunks.people.fetchAll());
+      void peopleDataRuntime.fetchAll(dispatch);
     }
   }, [
     companiesState.status,
@@ -316,8 +331,8 @@ export function NotesPage() {
     const reconciliation = reconcileNotesTabs({
       notesStatus: notesState.status,
       noteIds: notesState.ids,
-      openTabIds: notesTabsState.openTabIds,
-      activeTabId: notesTabsState.activeTabId,
+      openTabIds,
+      activeTabId,
       sortedNoteIds: sortedNotes.map((note) => note.id),
     });
 
@@ -326,37 +341,37 @@ export function NotesPage() {
     }
 
     if (reconciliation.type === "set-open-tabs") {
-      dispatch(notesTabsActions.setOpenTabs(reconciliation.openTabIds));
+      setOpenTabs(reconciliation.openTabIds);
       return;
     }
 
     if (reconciliation.type === "set-active-tab") {
-      dispatch(notesTabsActions.setActiveTab(reconciliation.activeTabId));
+      setActiveTab(reconciliation.activeTabId);
       return;
     }
 
     if (reconciliation.type === "open-note-tab") {
-      dispatch(
-        notesTabsActions.openNoteTab({
-          id: reconciliation.id,
-          activate: reconciliation.activate,
-        }),
-      );
+      openNoteTab({
+        id: reconciliation.id,
+        activate: reconciliation.activate,
+      });
     }
   }, [
-    dispatch,
     notesState.ids,
     notesState.status,
-    notesTabsState.activeTabId,
-    notesTabsState.openTabIds,
+    activeTabId,
+    openTabIds,
+    openNoteTab,
+    setActiveTab,
+    setOpenTabs,
     sortedNotes,
   ]);
 
   useEffect(() => {
-    if (notesTabsState.activeTabId !== notesState.selectedId) {
-      dispatch(dataActions.notes.setSelectedId(notesTabsState.activeTabId));
+    if (activeTabId !== notesState.selectedId) {
+      setSelectedNoteId(activeTabId);
     }
-  }, [dispatch, notesState.selectedId, notesTabsState.activeTabId]);
+  }, [activeTabId, notesState.selectedId, setSelectedNoteId]);
 
   useEffect(() => {
     if (selectedNote?.id === hydratedNoteIdRef.current) {
@@ -399,12 +414,10 @@ export function NotesPage() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      void dispatch(
-        dataThunks.notes.updateOne({
-          id: selectedNote.id,
-          input: buildNoteUpdateInputFromDraft(draft),
-        }),
-      );
+      void notesDataRuntime.updateOne(dispatch, {
+        id: selectedNote.id,
+        input: buildNoteUpdateInputFromDraft(draft),
+      });
       enqueueNoteForLinking(selectedNote.id);
     }, 500);
 
@@ -466,14 +479,12 @@ export function NotesPage() {
             continue;
           }
 
-          await dispatch(
-            dataThunks.notes.updateOne({
-              id: note.id,
-              input: {
-                body: migrationResult.html,
-              },
-            }),
-          ).unwrap();
+          await notesDataRuntime.updateOne(dispatch, {
+            id: note.id,
+            input: {
+              body: migrationResult.html,
+            },
+          });
 
           if (selectedNote?.id === note.id) {
             setDraftBody(
@@ -508,9 +519,7 @@ export function NotesPage() {
       confirm: (message) => window.confirm(message),
       deleteByIds: async (noteIds) => {
         await Promise.all(
-          noteIds.map((id) =>
-            dispatch(dataThunks.notes.deleteOne(id)).unwrap(),
-          ),
+          noteIds.map((id) => notesDataRuntime.deleteOne(dispatch, id)),
         );
       },
       setIsDeleting: setIsDeletingNotes,
@@ -529,9 +538,7 @@ export function NotesPage() {
       confirm: (message) => window.confirm(message),
       deleteByIds: async (noteIds) => {
         await Promise.all(
-          noteIds.map((id) =>
-            dispatch(dataThunks.notes.deleteOne(id)).unwrap(),
-          ),
+          noteIds.map((id) => notesDataRuntime.deleteOne(dispatch, id)),
         );
       },
       setIsDeleting: setIsDeletingNotes,
@@ -539,49 +546,55 @@ export function NotesPage() {
   };
 
   const createQuickNote = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.notes.createOne(buildQuickNoteCreateInput(label)),
-    ).unwrap();
+    const created = await notesDataRuntime.createOne(
+      dispatch,
+      buildQuickNoteCreateInput(label),
+    );
 
     return created.id;
   };
 
   const createQuickTask = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.tasks.createOne(buildQuickTaskCreateInput(label)),
-    ).unwrap();
+    const created = await tasksDataRuntime.createOne(
+      dispatch,
+      buildQuickTaskCreateInput(label),
+    );
 
     return created.id;
   };
 
   const createQuickProject = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.projects.createOne(buildQuickProjectCreateInput(label)),
-    ).unwrap();
+    const created = await projectsDataRuntime.createOne(
+      dispatch,
+      buildQuickProjectCreateInput(label),
+    );
 
     return created.id;
   };
 
   const createQuickMeeting = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.meetings.createOne(buildQuickMeetingCreateInput(label)),
-    ).unwrap();
+    const created = await meetingsDataRuntime.createOne(
+      dispatch,
+      buildQuickMeetingCreateInput(label),
+    );
 
     return created.id;
   };
 
   const createQuickCompany = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.companies.createOne(buildQuickCompanyCreateInput(label)),
-    ).unwrap();
+    const created = await companiesDataRuntime.createOne(
+      dispatch,
+      buildQuickCompanyCreateInput(label),
+    );
 
     return created.id;
   };
 
   const createQuickPerson = async (label: string) => {
-    const created = await dispatch(
-      dataThunks.people.createOne(buildQuickPersonCreateInput(label)),
-    ).unwrap();
+    const created = await peopleDataRuntime.createOne(
+      dispatch,
+      buildQuickPersonCreateInput(label),
+    );
 
     return created.id;
   };
@@ -594,7 +607,7 @@ export function NotesPage() {
             <div className="min-w-0 overflow-x-auto">
               <div className="flex w-max min-w-full items-center gap-1 pr-1">
                 {openTabs.map((note) => {
-                  const isActive = notesTabsState.activeTabId === note.id;
+                  const isActive = activeTabId === note.id;
                   return (
                     <div
                       key={note.id}
@@ -606,8 +619,8 @@ export function NotesPage() {
                           isActive ? "text-foreground" : "text-muted-foreground"
                         }`}
                         onClick={() => {
-                          dispatch(notesTabsActions.setActiveTab(note.id));
-                          dispatch(dataActions.notes.setSelectedId(note.id));
+                          setActiveTab(note.id);
+                          setSelectedNoteId(note.id);
                         }}
                       >
                         {note.title || DEFAULT_NOTE_TITLE}
@@ -619,7 +632,7 @@ export function NotesPage() {
                         className="mr-1"
                         aria-label="Close note tab"
                         onClick={() => {
-                          dispatch(notesTabsActions.closeNoteTab(note.id));
+                          closeNoteTab(note.id);
                         }}
                       >
                         <X />
@@ -901,9 +914,7 @@ export function NotesPage() {
                             type="button"
                             className="hover:bg-muted block w-full rounded-md px-2 py-1 text-left"
                             onClick={() => {
-                              dispatch(
-                                notesTabsActions.replaceActiveTab(item.id),
-                              );
+                              replaceActiveTab(item.id);
                             }}
                           >
                             {item.label}

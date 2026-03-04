@@ -39,3 +39,41 @@
 - Consequences:
   - Lower migration risk.
   - State migration work happens with clearer module boundaries.
+
+## ADR-0005: Continue incremental entity-domain migration behind feature facades
+
+- Date: 2026-03-03
+- Status: Accepted
+- Context:
+  - Phase 3 pilot moved `people` selection state behind a Zustand-backed adapter while preserving existing facade signatures.
+  - Automated validation remained stable (`25/25` test files, `78/78` tests).
+  - Manual smoke flows were confirmed for people selection/create/navigation.
+  - Existing lint failure remained unchanged and unrelated to the pilot (`src/pages/objects-page-field-drafts.ts`).
+- Decision:
+  - Continue migration domain-by-domain behind existing feature facades (starting with `companies`, then `projects`, `meetings`, `notes`, `tasks` as planned).
+  - Keep per-domain adapter rollback capability until that domain is verified stable.
+  - Keep migration scope constrained to state-container swaps only (no UX or async contract changes).
+- Consequences:
+  - Migration can proceed with bounded blast radius and clear rollback points.
+  - Temporary dual-path complexity (adapter indirection) remains until later cleanup.
+  - Phase 5 stays optional and can be paused if regression or maintenance cost exceeds value.
+
+## ADR-0006: Finalize post-Redux runtime state architecture
+
+- Date: 2026-03-03
+- Status: Accepted
+- Context:
+  - Phase 5.6 completed runtime teardown for entity domains (`projects`, `notes`, `tasks`, `meetings`, `companies`, `people`).
+  - Domain data runtimes now perform CRUD through `getDataModules()` and synchronize feature-scoped Zustand runtime state.
+  - Store integration has been reduced to a lightweight runtime-event dispatch bridge in [src/store/store.ts](src/store/store.ts) that triggers relation refresh on mutation-fulfilled events.
+  - `react-redux` and `@reduxjs/toolkit` were removed from dependencies.
+- Decision:
+  - Adopt feature-scoped Zustand stores as the runtime source of truth for entity collections, status, error, and selection state.
+  - Keep domain data operations inside feature application runtimes and route persistence through DataModules abstractions.
+  - Retain a minimal dispatch contract (`store.dispatch`) only for runtime mutation-event fanout and relation-sync refresh behavior.
+  - Keep UI and route layers consuming feature facades/runtime APIs; do not reintroduce direct global store entity reads.
+- Consequences:
+  - Runtime state management is simpler and aligned with feature boundaries and Clean Architecture direction.
+  - Redux-specific bootstrapping, reducers, selectors, and provider wiring are no longer part of the runtime path.
+  - Relation-sync behavior now depends on stable mutation fulfilled event naming; future mutation emitters must preserve that contract.
+  - Future global orchestration changes should extend the lightweight event bridge intentionally rather than reintroducing broad Redux coupling.

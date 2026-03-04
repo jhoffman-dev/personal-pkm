@@ -1,7 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { dataThunks, useAppDispatch } from "@/store";
+import { companiesDataRuntime } from "@/features/companies";
+import { meetingsDataRuntime } from "@/features/meetings";
+import { notesDataRuntime } from "@/features/notes";
+import { peopleDataRuntime } from "@/features/people";
+import { projectsDataRuntime } from "@/features/projects";
+import { tasksDataRuntime } from "@/features/tasks";
+import { useAppDispatch } from "@/store";
 import { createFirestoreDataModules } from "@/data/firestore";
 import { resetToLocalDataModules, setDataModules } from "@/data";
 import {
@@ -73,12 +79,12 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
       setIsLoading(false);
 
       void Promise.all([
-        dispatch(dataThunks.projects.fetchAll()),
-        dispatch(dataThunks.notes.fetchAll()),
-        dispatch(dataThunks.tasks.fetchAll()),
-        dispatch(dataThunks.meetings.fetchAll()),
-        dispatch(dataThunks.companies.fetchAll()),
-        dispatch(dataThunks.people.fetchAll()),
+        projectsDataRuntime.fetchAll(dispatch),
+        notesDataRuntime.fetchAll(dispatch),
+        tasksDataRuntime.fetchAll(dispatch),
+        meetingsDataRuntime.fetchAll(dispatch),
+        companiesDataRuntime.fetchAll(dispatch),
+        peopleDataRuntime.fetchAll(dispatch),
       ]);
     });
 

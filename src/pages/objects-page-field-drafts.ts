@@ -67,6 +67,7 @@ export function useObjectsPageFieldDrafts(params: {
     pendingCommitTimeoutIdsRef.current = {};
 
     if (!selectedRecord || !selectedType) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset draft inputs when selection context is cleared.
       setFieldDraftValues({});
       return;
     }
