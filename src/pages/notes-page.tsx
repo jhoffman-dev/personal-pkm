@@ -625,7 +625,7 @@ export function NotesPage() {
   return (
     <section className="h-full min-h-0 overflow-hidden">
       <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <WorkbenchTabstrip tabs={workbenchTabs} className="px-2 py-1" />
+        <WorkbenchTabstrip tabs={workbenchTabs} />
 
         <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
           <div className="h-full min-h-0 min-w-0 flex-1 p-4">

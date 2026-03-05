@@ -721,7 +721,7 @@ export function TasksPage() {
   const mainNote = mainNoteId ? notesState.entities[mainNoteId] : null;
 
   return (
-    <section className="h-[calc(100svh-41px)] p-6">
+    <section className="h-full min-h-0 overflow-hidden p-[var(--workbench-page-padding)]">
       <Card className="h-full py-0">
         <CardContent className="flex h-full min-h-0 flex-col p-0">
           <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">

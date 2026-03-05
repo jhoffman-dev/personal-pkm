@@ -137,7 +137,7 @@ export function DrawingsPage() {
   };
 
   return (
-    <section className="h-[calc(100svh-41px)] p-6">
+    <section className="h-full min-h-0 overflow-hidden p-[var(--workbench-page-padding)]">
       <Card className="h-full overflow-hidden py-0">
         <CardContent className="grid h-full grid-cols-[18rem_minmax(0,1fr)] gap-0 p-0">
           <aside className="border-r p-3">

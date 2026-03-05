@@ -452,7 +452,7 @@ export function AssistantPage() {
   };
 
   return (
-    <section className="h-[calc(100svh-41px)] p-6">
+    <section className="h-full min-h-0 overflow-hidden p-[var(--workbench-page-padding)]">
       <Card className="h-full py-0">
         <CardContent className="flex h-full min-h-0 p-4">
           <div className="flex min-h-0 flex-1 flex-col gap-3">

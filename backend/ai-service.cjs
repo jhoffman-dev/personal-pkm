@@ -16,6 +16,43 @@ function resolveProvider(providerId) {
   return providers[providerId] || providers.ollama;
 }
 
+function normalizeModelList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) =>
+          typeof entry === "string" ? entry.trim() : String(entry ?? "").trim(),
+        )
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function listProviderModels(request) {
+  const provider = resolveProvider(request.provider);
+
+  if (typeof provider.listModels !== "function") {
+    return {
+      provider: provider.id,
+      models: [],
+    };
+  }
+
+  const models = await provider.listModels({
+    provider: request.provider,
+    googleAiStudioApiKey: request.googleAiStudioApiKey,
+  });
+
+  return {
+    provider: provider.id,
+    models: normalizeModelList(models),
+  };
+}
+
 async function* generateChatReplyStream(request) {
   const provider = resolveProvider(request.provider);
   const streamOptions = {
@@ -73,4 +110,5 @@ async function generateChatReply(request) {
 module.exports = {
   generateChatReply,
   generateChatReplyStream,
+  listProviderModels,
 };

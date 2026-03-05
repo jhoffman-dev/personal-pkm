@@ -86,8 +86,10 @@ body,
 }
 
 .simple-editor-content .tiptap.ProseMirror.simple-editor {
-  font-size: 1.06rem;
-  line-height: 1.62;
+  color: var(--color-foreground);
+  font-size: 1rem;
+  font-weight: 440;
+  line-height: 1.52;
 }
 
 .simple-editor-content .tiptap.ProseMirror.simple-editor h1 {
@@ -125,31 +127,31 @@ body,
 .simple-editor-content
   .tiptap.ProseMirror.simple-editor
   p:not(:first-child):not(td p):not(th p) {
-  margin-top: 0.8rem;
-  line-height: 1.62;
+  margin-top: 0.62rem;
+  line-height: 1.52;
 }
 
 .simple-editor-content .tiptap.ProseMirror.simple-editor ul,
 .simple-editor-content .tiptap.ProseMirror.simple-editor ol {
-  margin-top: 0.95rem;
-  margin-bottom: 0.95rem;
+  margin-top: 0.8rem;
+  margin-bottom: 0.8rem;
 }
 
 .simple-editor-content .tiptap.ProseMirror.simple-editor li + li {
-  margin-top: 0.35rem;
+  margin-top: 0.28rem;
 }
 
 .simple-editor-content .tiptap.ProseMirror.simple-editor blockquote,
 .simple-editor-content .tiptap.ProseMirror.simple-editor pre {
-  margin-top: 1rem;
-  margin-bottom: 1rem;
+  margin-top: 0.85rem;
+  margin-bottom: 0.85rem;
 }
 
 .simple-editor-content
   .tiptap.ProseMirror.simple-editor
   [data-type="horizontalRule"] {
-  margin-top: 1rem;
-  margin-bottom: 1rem;
+  margin-top: 0.85rem;
+  margin-bottom: 0.85rem;
   padding-top: 0;
   padding-bottom: 0;
 }

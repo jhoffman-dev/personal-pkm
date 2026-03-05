@@ -27,12 +27,15 @@ export function WorkbenchTabstrip({
   return (
     <div
       className={cn(
-        "bg-muted/20 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b px-2 py-1",
+        "bg-muted/20 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b px-2.5",
         className,
       )}
     >
       <div className="min-w-0 overflow-x-auto">
-        <div className="flex w-max min-w-full items-center gap-1 pr-1">
+        <div
+          role="tablist"
+          className="flex w-max min-w-full items-stretch pr-1"
+        >
           {tabs.map((tab) => {
             const isActive = tab.isActive ?? false;
 
@@ -41,17 +44,26 @@ export function WorkbenchTabstrip({
                 key={tab.id}
                 role="presentation"
                 className={cn(
-                  "bg-background inline-flex min-w-0 items-center gap-1 rounded-md border",
-                  isActive ? "border-border" : "border-transparent",
+                  "group relative inline-flex min-w-0 items-center border-r",
+                  isActive
+                    ? "bg-background text-foreground"
+                    : "text-muted-foreground hover:bg-muted/40",
                 )}
               >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute top-0 left-0 h-0.5 w-full",
+                    isActive ? "bg-primary" : "bg-transparent",
+                  )}
+                />
                 <button
                   type="button"
                   role="tab"
                   aria-selected={isActive}
                   className={cn(
-                    "max-w-64 truncate px-3 py-1.5 text-sm whitespace-nowrap",
-                    isActive ? "text-foreground" : "text-muted-foreground",
+                    "max-w-72 truncate px-3 py-2 text-sm leading-5 whitespace-nowrap",
+                    isActive ? "font-medium" : "font-normal",
                     tab.onSelect ? "cursor-pointer" : "cursor-default",
                   )}
                   onClick={tab.onSelect}
@@ -65,7 +77,12 @@ export function WorkbenchTabstrip({
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="mr-1"
+                    className={cn(
+                      "mr-1 h-6 w-6 shrink-0",
+                      isActive
+                        ? "opacity-80 hover:opacity-100"
+                        : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                    )}
                     aria-label={`Close ${tab.label}`}
                     onClick={tab.onClose}
                   >

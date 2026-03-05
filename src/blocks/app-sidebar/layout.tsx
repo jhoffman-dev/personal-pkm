@@ -23,11 +23,29 @@ import {
   useNotesEntityStateFacade,
   useNotesTabsFacade,
 } from "@/features/notes";
+import { buildAssistantRagDocuments } from "@/features/assistant";
+import type {
+  Company,
+  Meeting,
+  Note,
+  Person,
+  Project,
+  Task,
+} from "@/data/entities";
+import { loadAppSettings } from "@/lib/app-settings";
+import { listProviderModels } from "@/lib/ai-client";
+import { useCompaniesStateFacade } from "@/features/companies";
+import { useMeetingsStateFacade } from "@/features/meetings";
+import { usePeopleStateFacade } from "@/features/people";
+import { useProjectsStateFacade } from "@/features/projects";
+import { useTasksEntityStateFacade } from "@/features/tasks";
 import { Plus } from "lucide-react";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -73,15 +91,19 @@ const DEFAULT_EDITOR_GROUPS_STATE: EditorGroupsState = {
 };
 
 interface WorkbenchLayoutState {
+  leftSidebarWidth: number;
   rightSidebarWidth: number;
   bottomPanelHeight: number;
 }
 
 const DEFAULT_WORKBENCH_LAYOUT_STATE: WorkbenchLayoutState = {
+  leftSidebarWidth: 300,
   rightSidebarWidth: 320,
   bottomPanelHeight: 220,
 };
 
+const MIN_LEFT_SIDEBAR_WIDTH = 240;
+const MAX_LEFT_SIDEBAR_WIDTH = 520;
 const MIN_RIGHT_SIDEBAR_WIDTH = 260;
 const MAX_RIGHT_SIDEBAR_WIDTH = 560;
 const MIN_BOTTOM_PANEL_HEIGHT = 140;
@@ -270,6 +292,14 @@ function loadWorkbenchLayoutState(): WorkbenchLayoutState {
   try {
     const parsed = JSON.parse(raw) as Partial<WorkbenchLayoutState>;
     return {
+      leftSidebarWidth:
+        typeof parsed.leftSidebarWidth === "number"
+          ? clampNumber(
+              parsed.leftSidebarWidth,
+              MIN_LEFT_SIDEBAR_WIDTH,
+              Math.min(MAX_LEFT_SIDEBAR_WIDTH, window.innerWidth - 420),
+            )
+          : DEFAULT_WORKBENCH_LAYOUT_STATE.leftSidebarWidth,
       rightSidebarWidth:
         typeof parsed.rightSidebarWidth === "number"
           ? parsed.rightSidebarWidth
@@ -368,8 +398,13 @@ export default function Layout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const title = getRouteTitle(pathname);
+  const { projectsState } = useProjectsStateFacade();
+  const { meetingsState } = useMeetingsStateFacade();
+  const { companiesState } = useCompaniesStateFacade();
+  const { peopleState } = usePeopleStateFacade();
+  const { tasksState } = useTasksEntityStateFacade();
   const { openNoteTab, setActiveScope } = useNotesTabsFacade();
-  const { setSelectedNoteId } = useNotesEntityStateFacade();
+  const { notesState, setSelectedNoteId } = useNotesEntityStateFacade();
   const [isCreatingNote, setIsCreatingNote] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(() =>
     loadPersistedBoolean(WORKBENCH_RIGHT_SIDEBAR_STORAGE_KEY, true),
@@ -392,8 +427,15 @@ export default function Layout() {
     sortedAssistantConversations,
     renamingConversationId,
     renameValue,
+    assistantError,
+    activeConversation,
+    isSendingMessage,
+    streamingThinking,
+    setProvider,
+    setModel,
     setRenameValue,
     createConversation,
+    sendPrompt,
     selectConversation,
     startConversationRename,
     saveConversationRename,
@@ -403,6 +445,116 @@ export default function Layout() {
   } = useAppSidebarAssistantState({
     isAssistantRoute: true,
   });
+  const geminiApiKey = useMemo(
+    () => loadAppSettings().googleAiStudioApiKey.trim(),
+    [],
+  );
+  const isGeminiKeyConfigured = geminiApiKey.length > 0;
+  const [availableAssistantModels, setAvailableAssistantModels] = useState<
+    string[]
+  >([]);
+  const [isLoadingAssistantModels, setIsLoadingAssistantModels] =
+    useState(false);
+  const [assistantModelsError, setAssistantModelsError] = useState<
+    string | null
+  >(null);
+  const [assistantModelsRefreshNonce, setAssistantModelsRefreshNonce] =
+    useState(0);
+
+  const ragDocuments = useMemo(() => {
+    const projects: Project[] = projectsState.ids
+      .map((id) => projectsState.entities[id])
+      .filter(Boolean);
+    const notes: Note[] = notesState.ids
+      .map((id) => notesState.entities[id])
+      .filter(Boolean);
+    const tasks: Task[] = tasksState.ids
+      .map((id) => tasksState.entities[id])
+      .filter(Boolean);
+    const meetings: Meeting[] = meetingsState.ids
+      .map((id) => meetingsState.entities[id])
+      .filter(Boolean);
+    const companies: Company[] = companiesState.ids
+      .map((id) => companiesState.entities[id])
+      .filter(Boolean);
+    const people: Person[] = peopleState.ids
+      .map((id) => peopleState.entities[id])
+      .filter(Boolean);
+
+    return buildAssistantRagDocuments({
+      projects,
+      notes,
+      tasks,
+      meetings,
+      companies,
+      people,
+      assistantState,
+    });
+  }, [
+    assistantState,
+    companiesState.entities,
+    companiesState.ids,
+    meetingsState.entities,
+    meetingsState.ids,
+    notesState.entities,
+    notesState.ids,
+    peopleState.entities,
+    peopleState.ids,
+    projectsState.entities,
+    projectsState.ids,
+    tasksState.entities,
+    tasksState.ids,
+  ]);
+
+  useEffect(() => {
+    const provider = assistantState.provider;
+
+    if (provider === "gemini" && !geminiApiKey) {
+      setAvailableAssistantModels([]);
+      setAssistantModelsError("Gemini key missing");
+      setIsLoadingAssistantModels(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingAssistantModels(true);
+    setAssistantModelsError(null);
+
+    void listProviderModels({
+      provider,
+      googleAiStudioApiKey: provider === "gemini" ? geminiApiKey : undefined,
+    })
+      .then((result) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setAvailableAssistantModels(result.models);
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setAvailableAssistantModels([]);
+        setAssistantModelsError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load provider models",
+        );
+      })
+      .finally(() => {
+        if (isCancelled) {
+          return;
+        }
+
+        setIsLoadingAssistantModels(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [assistantState.provider, geminiApiKey, assistantModelsRefreshNonce]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -554,6 +706,41 @@ export default function Layout() {
       setWorkbenchLayoutState((previous) => ({
         ...previous,
         rightSidebarWidth: nextWidth,
+      }));
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleLeftSidebarResizeStart = (
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = workbenchLayoutState.leftSidebarWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const nextWidth = clampNumber(
+        startWidth + deltaX,
+        MIN_LEFT_SIDEBAR_WIDTH,
+        Math.min(MAX_LEFT_SIDEBAR_WIDTH, window.innerWidth - 420),
+      );
+
+      setWorkbenchLayoutState((previous) => ({
+        ...previous,
+        leftSidebarWidth: nextWidth,
       }));
     };
 
@@ -803,7 +990,7 @@ export default function Layout() {
   const isNotesRouteInActivePane = isRouteActive(pathname, "/notes");
 
   return (
-    <SidebarProvider className="h-full overflow-hidden flex-col">
+    <SidebarProvider className="workbench-shell h-full overflow-hidden flex-col">
       <AppBar
         title={title}
         isRightSidebarOpen={isRightSidebarOpen}
@@ -818,10 +1005,25 @@ export default function Layout() {
         onToggleEditorSplitLayout={toggleEditorSplitLayout}
       />
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <AppSidebar
-          onOpenWorkbenchRoute={openWorkbenchRouteFromSidebar}
-          className="top-[41px] h-auto"
-        />
+        <div
+          className="relative shrink-0"
+          style={
+            {
+              "--sidebar-width": `${workbenchLayoutState.leftSidebarWidth}px`,
+            } as CSSProperties
+          }
+        >
+          <AppSidebar
+            onOpenWorkbenchRoute={openWorkbenchRouteFromSidebar}
+            className="top-[var(--workbench-app-bar-height)] h-auto z-30"
+          />
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            className="absolute top-0 right-0 z-50 hidden h-full w-1 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-border md:block"
+            onMouseDown={handleLeftSidebarResizeStart}
+          />
+        </div>
         <WorkbenchBottomPanelContext.Provider
           value={{
             activeBottomPanelView,
@@ -920,7 +1122,7 @@ export default function Layout() {
 
                 {isBottomPanelOpen ? (
                   <section
-                    className="bg-background/95 relative z-20 shrink-0 border-t backdrop-blur"
+                    className="bg-background/95 relative z-20 flex shrink-0 flex-col border-t backdrop-blur"
                     style={{
                       height: `${workbenchLayoutState.bottomPanelHeight}px`,
                     }}
@@ -931,8 +1133,8 @@ export default function Layout() {
                       className="absolute top-0 left-0 z-30 h-1 w-full -translate-y-1/2 cursor-row-resize bg-transparent hover:bg-border"
                       onMouseDown={handleBottomPanelResizeStart}
                     />
-                    <div className="bg-muted/20 flex h-8 items-center justify-between border-b px-2">
-                      <div className="flex items-center gap-1">
+                    <div className="bg-muted/30 flex h-9 items-center justify-between border-b px-2.5">
+                      <div className="flex items-center gap-1.5">
                         <Button
                           type="button"
                           size="xs"
@@ -941,7 +1143,7 @@ export default function Layout() {
                               ? "secondary"
                               : "ghost"
                           }
-                          className="h-6 px-2 text-xs"
+                          className="h-7 px-2.5 text-xs font-medium"
                           onClick={() => {
                             setActiveBottomPanelView("route-timing");
                           }}
@@ -956,7 +1158,7 @@ export default function Layout() {
                               ? "secondary"
                               : "ghost"
                           }
-                          className="h-6 px-2 text-xs"
+                          className="h-7 px-2.5 text-xs font-medium"
                           onClick={() => {
                             setActiveBottomPanelView("output");
                           }}
@@ -971,7 +1173,7 @@ export default function Layout() {
                               ? "secondary"
                               : "ghost"
                           }
-                          className="h-6 px-2 text-xs"
+                          className="h-7 px-2.5 text-xs font-medium"
                           onClick={() => {
                             setActiveBottomPanelView("properties");
                           }}
@@ -987,7 +1189,7 @@ export default function Layout() {
                                 ? "secondary"
                                 : "ghost"
                             }
-                            className="h-6 px-2 text-xs"
+                            className="h-7 px-2.5 text-xs font-medium"
                             onClick={() => {
                               setActiveBottomPanelView("dev-tools");
                             }}
@@ -996,11 +1198,11 @@ export default function Layout() {
                           </Button>
                         ) : null}
                       </div>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-muted-foreground text-xs leading-none">
                         Cmd/Ctrl+J
                       </p>
                     </div>
-                    <div className="h-[calc(100%-2rem)] min-h-0 overflow-hidden">
+                    <div className="min-h-0 flex-1 overflow-hidden">
                       {activeBottomPanelView === "route-timing" ? (
                         <DevRouteTimingPanel mode="docked" />
                       ) : activeBottomPanelView === "dev-tools" ? (
@@ -1040,12 +1242,33 @@ export default function Layout() {
                   />
                   <div className="h-full overflow-y-auto py-2">
                     <AppSidebarAssistantSection
+                      variant="chat"
                       conversations={sortedAssistantConversations}
+                      activeConversation={activeConversation}
                       activeConversationId={assistantState.activeConversationId}
+                      provider={assistantState.provider}
+                      model={assistantState.model}
+                      availableModels={availableAssistantModels}
+                      isLoadingModels={isLoadingAssistantModels}
+                      modelsError={assistantModelsError}
                       renamingConversationId={renamingConversationId}
                       renameValue={renameValue}
+                      isSending={isSendingMessage}
+                      isGeminiKeyConfigured={isGeminiKeyConfigured}
+                      errorMessage={assistantError}
+                      streamingThinking={streamingThinking}
                       onRenameValueChange={setRenameValue}
                       onCreateConversation={createConversation}
+                      onProviderChange={setProvider}
+                      onModelChange={setModel}
+                      onRefreshModels={() => {
+                        setAssistantModelsRefreshNonce(
+                          (previous) => previous + 1,
+                        );
+                      }}
+                      onSendPrompt={(prompt) =>
+                        sendPrompt({ prompt, ragDocuments, geminiApiKey })
+                      }
                       onSelectConversation={selectConversation}
                       onStartRename={startConversationRename}
                       onSaveRename={saveConversationRename}

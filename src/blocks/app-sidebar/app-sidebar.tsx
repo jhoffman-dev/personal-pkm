@@ -58,6 +58,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     routePath: string,
     openTarget: AppSidebarOpenTarget,
   ) => "primary" | "secondary";
+  onResizeStart?: (event: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 function getInitialRailRoute(pathname: string): string {
@@ -69,6 +70,7 @@ function getInitialRailRoute(pathname: string): string {
 
 export function AppSidebar({
   onOpenWorkbenchRoute,
+  onResizeStart,
   className,
   ...props
 }: AppSidebarProps) {
@@ -309,10 +311,12 @@ export function AppSidebar({
 
       {/* --------------------- */}
       {/* Sidebar inner content */}
-      <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-        <SidebarHeader className="flex flex-col items-start gap-1 border-b px-4 py-3">
-          <h3 className="font-medium">{activeTitle}</h3>
-          <p className="text-muted-foreground text-[11px] leading-tight">
+      <Sidebar collapsible="none" className="relative hidden flex-1 md:flex">
+        <SidebarHeader className="flex flex-col items-start gap-1.5 border-b px-4 py-3">
+          <h3 className="text-sm font-semibold tracking-tight">
+            {activeTitle}
+          </h3>
+          <p className="text-muted-foreground text-xs leading-snug">
             Destination: {currentOpenTargetLabel} · ⌥ Other pane · ⌘/Ctrl New
             tab
           </p>
@@ -385,6 +389,14 @@ export function AppSidebar({
           )}
         </SidebarContent>
         <SidebarFooter />
+        {onResizeStart ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            className="absolute top-0 right-0 z-40 hidden h-full w-1 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-border md:block"
+            onMouseDown={onResizeStart}
+          />
+        ) : null}
       </Sidebar>
     </Sidebar>
   );

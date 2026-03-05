@@ -37,6 +37,13 @@ function createAssistantChatUseCases(dependencies) {
     return { ok: true };
   }
 
+  async function listModels(input) {
+    return aiGateway.listModels({
+      provider: input.provider,
+      googleAiStudioApiKey: input.googleAiStudioApiKey,
+    });
+  }
+
   async function reply(input) {
     const result = await aiGateway.generateReply({
       provider: input.provider,
@@ -115,6 +122,7 @@ function createAssistantChatUseCases(dependencies) {
 
   return {
     listChats,
+    listModels,
     upsertChat,
     deleteChat,
     reply,

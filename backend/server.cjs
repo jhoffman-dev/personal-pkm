@@ -222,6 +222,27 @@ app.post("/api/ai/chat/stream", async (req, res) => {
   }
 });
 
+app.post("/api/ai/models", async (req, res) => {
+  try {
+    const provider =
+      typeof req.body?.provider === "string" ? req.body.provider : "ollama";
+    const googleAiStudioApiKey =
+      typeof req.body?.googleAiStudioApiKey === "string"
+        ? req.body.googleAiStudioApiKey
+        : undefined;
+
+    const result = await assistantChatUseCases.listModels({
+      provider,
+      googleAiStudioApiKey,
+    });
+
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown AI error";
+    return res.status(500).json({ error: message });
+  }
+});
+
 const server = app.listen(AI_SERVER_PORT, "127.0.0.1", () => {
   console.log(`[pkm-ai] listening on http://127.0.0.1:${AI_SERVER_PORT}`);
 });

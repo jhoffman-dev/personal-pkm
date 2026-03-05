@@ -3,6 +3,15 @@ const GEMINI_API_BASE =
   process.env.GEMINI_API_BASE ||
   "https://generativelanguage.googleapis.com/v1beta";
 
+function resolveApiKey(options = {}) {
+  const runtimeKey =
+    typeof options.googleAiStudioApiKey === "string"
+      ? options.googleAiStudioApiKey.trim()
+      : "";
+
+  return runtimeKey || process.env.GOOGLE_AI_STUDIO_API_KEY;
+}
+
 function mapMessages(messages) {
   const contents = [];
 
@@ -35,15 +44,59 @@ function readReplyText(data) {
     .trim();
 }
 
+function normalizeModelName(rawName) {
+  if (typeof rawName !== "string") {
+    return "";
+  }
+
+  return rawName.replace(/^models\//, "").trim();
+}
+
 function createGeminiProvider() {
   return {
     id: "gemini",
+    async listModels(options = {}) {
+      const apiKey = resolveApiKey(options);
+      if (!apiKey) {
+        throw new Error(
+          "Gemini provider is not configured. Set GOOGLE_AI_STUDIO_API_KEY in the environment.",
+        );
+      }
+
+      const endpoint = `${GEMINI_API_BASE}/models?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(endpoint, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `Gemini model listing failed (${response.status}): ${text}`,
+        );
+      }
+
+      const data = await response.json();
+      const rawModels = Array.isArray(data?.models) ? data.models : [];
+      const modelNames = rawModels
+        .filter((entry) => {
+          const methods = Array.isArray(entry?.supportedGenerationMethods)
+            ? entry.supportedGenerationMethods
+            : [];
+          return methods.length === 0 || methods.includes("generateContent");
+        })
+        .map((entry) => normalizeModelName(entry?.name))
+        .filter(Boolean);
+
+      const deduped = Array.from(new Set(modelNames));
+
+      if (deduped.length === 0) {
+        return [DEFAULT_GEMINI_MODEL];
+      }
+
+      return deduped;
+    },
     async generateChat(messages, options = {}) {
-      const runtimeKey =
-        typeof options.googleAiStudioApiKey === "string"
-          ? options.googleAiStudioApiKey.trim()
-          : "";
-      const apiKey = runtimeKey || process.env.GOOGLE_AI_STUDIO_API_KEY;
+      const apiKey = resolveApiKey(options);
       if (!apiKey) {
         throw new Error(
           "Gemini provider is not configured. Set GOOGLE_AI_STUDIO_API_KEY in the environment.",

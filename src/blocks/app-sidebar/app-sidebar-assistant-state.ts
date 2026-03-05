@@ -1,16 +1,28 @@
-import { deleteAssistantChat, upsertAssistantChat } from "@/lib/ai-client";
+import {
+  deleteAssistantChat,
+  type ChatMessage,
+  upsertAssistantChat,
+} from "@/lib/ai-client";
+import {
+  PROVIDER_DEFAULT_MODELS,
+  streamAssistantReply,
+} from "@/features/assistant";
 import {
   ASSISTANT_STORAGE_EVENT,
   type AssistantConversation,
+  type AssistantProvider,
   DEFAULT_CONVERSATION_TITLE,
   createEmptyConversation,
+  deriveConversationTitle,
   hydrateAssistantStateFromFirestore,
   loadAssistantState,
   saveAssistantState,
   sortAssistantConversations,
+  type UiMessage,
   type StoredAssistantState,
 } from "@/lib/assistant-storage";
 import { firebaseAuth } from "@/lib/firebase";
+import type { RagDocument } from "@/lib/rag-context";
 import { onAuthStateChanged } from "firebase/auth";
 import * as React from "react";
 
@@ -30,6 +42,11 @@ export function useAppSidebarAssistantState(params: {
     string | null
   >(null);
   const [renameValue, setRenameValue] = React.useState("");
+  const [isSendingMessage, setIsSendingMessage] = React.useState(false);
+  const [assistantError, setAssistantError] = React.useState<string | null>(
+    null,
+  );
+  const [streamingThinking, setStreamingThinking] = React.useState("");
 
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
@@ -97,6 +114,15 @@ export function useAppSidebarAssistantState(params: {
     [assistantState.conversations],
   );
 
+  const activeConversation = React.useMemo(
+    () =>
+      assistantState.conversations.find(
+        (conversation) =>
+          conversation.id === assistantState.activeConversationId,
+      ) ?? null,
+    [assistantState.activeConversationId, assistantState.conversations],
+  );
+
   const getCurrentAuthToken = React.useCallback(async () => {
     if (!firebaseAuth.currentUser) {
       return null;
@@ -155,22 +181,234 @@ export function useAppSidebarAssistantState(params: {
     [assistantUserId, getCurrentAuthToken],
   );
 
-  const persistConversationBestEffort = (
-    conversation: AssistantConversation,
-  ) => {
-    void persistAssistantConversation(conversation).catch(() => {
-      // Keep local in-memory state if persistence fails.
-    });
-  };
+  const persistConversationBestEffort = React.useCallback(
+    (conversation: AssistantConversation) => {
+      void persistAssistantConversation(conversation).catch(() => {
+        // Keep local in-memory state if persistence fails.
+      });
+    },
+    [persistAssistantConversation],
+  );
 
-  const removeConversationBestEffort = (conversationId: string) => {
-    void removeAssistantConversationFromFirestore(conversationId).catch(() => {
-      // Keep local in-memory state if persistence fails.
-    });
-  };
+  const removeConversationBestEffort = React.useCallback(
+    (conversationId: string) => {
+      void removeAssistantConversationFromFirestore(conversationId).catch(
+        () => {
+          // Keep local in-memory state if persistence fails.
+        },
+      );
+    },
+    [removeAssistantConversationFromFirestore],
+  );
+
+  const sendPrompt = React.useCallback(
+    async (params: {
+      prompt: string;
+      ragDocuments?: RagDocument[];
+      geminiApiKey?: string;
+    }) => {
+      const value = params.prompt.trim();
+      if (!value || isSendingMessage || !activeConversation) {
+        return false;
+      }
+
+      const conversationId = activeConversation.id;
+      const existingMessages = activeConversation.messages;
+      const chatHistory: ChatMessage[] = existingMessages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
+      const userMessage: UiMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: value,
+      };
+      const assistantMessageId = crypto.randomUUID();
+      const assistantPlaceholder: UiMessage = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+      };
+      const nextMessages = [
+        ...existingMessages,
+        userMessage,
+        assistantPlaceholder,
+      ];
+      const now = new Date().toISOString();
+      const conversationTitle =
+        activeConversation.title === DEFAULT_CONVERSATION_TITLE
+          ? deriveConversationTitle(value)
+          : activeConversation.title;
+
+      updateAssistantState((previous) => ({
+        ...previous,
+        conversations: previous.conversations.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                title:
+                  conversation.title === DEFAULT_CONVERSATION_TITLE
+                    ? deriveConversationTitle(value)
+                    : conversation.title,
+                updatedAt: now,
+                messages: nextMessages,
+              }
+            : conversation,
+        ),
+      }));
+
+      setAssistantError(null);
+      setIsSendingMessage(true);
+      setStreamingThinking("Thinking...");
+
+      try {
+        const authToken = (await getCurrentAuthToken()) ?? undefined;
+
+        const { finalReply } = await streamAssistantReply({
+          provider: assistantState.provider,
+          model: assistantState.model,
+          systemPrompt: assistantState.systemPrompt,
+          conversationId,
+          conversationTitle,
+          userId: assistantUserId,
+          prompt: value,
+          chatHistory,
+          ragDocuments: params.ragDocuments ?? [],
+          authToken,
+          geminiApiKey: params.geminiApiKey,
+          onThinking: (thinking) => {
+            setStreamingThinking(thinking || "Thinking...");
+          },
+          onReplyDelta: (reply) => {
+            updateAssistantState((previous) => ({
+              ...previous,
+              conversations: previous.conversations.map((conversation) =>
+                conversation.id === conversationId
+                  ? {
+                      ...conversation,
+                      updatedAt: new Date().toISOString(),
+                      messages: conversation.messages.map((message) =>
+                        message.id === assistantMessageId
+                          ? {
+                              ...message,
+                              content: reply,
+                            }
+                          : message,
+                      ),
+                    }
+                  : conversation,
+              ),
+            }));
+          },
+        });
+
+        let persistedConversation: AssistantConversation | null = null;
+        updateAssistantState((previous) => ({
+          ...previous,
+          conversations: previous.conversations.map((conversation) => {
+            if (conversation.id !== conversationId) {
+              return conversation;
+            }
+
+            const updatedConversation: AssistantConversation = {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              messages: conversation.messages.map((message) =>
+                message.id === assistantMessageId
+                  ? {
+                      ...message,
+                      content: finalReply,
+                    }
+                  : message,
+              ),
+            };
+
+            persistedConversation = updatedConversation;
+            return updatedConversation;
+          }),
+        }));
+
+        if (persistedConversation) {
+          persistConversationBestEffort(persistedConversation);
+        }
+
+        return true;
+      } catch (requestError) {
+        setAssistantError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Failed to call AI backend",
+        );
+
+        let persistedConversation: AssistantConversation | null = null;
+        updateAssistantState((previous) => ({
+          ...previous,
+          conversations: previous.conversations.map((conversation) => {
+            if (conversation.id !== conversationId) {
+              return conversation;
+            }
+
+            const updatedConversation: AssistantConversation = {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              messages: conversation.messages.filter(
+                (message) => message.id !== assistantMessageId,
+              ),
+            };
+
+            persistedConversation = updatedConversation;
+            return updatedConversation;
+          }),
+        }));
+
+        if (persistedConversation) {
+          persistConversationBestEffort(persistedConversation);
+        }
+
+        return false;
+      } finally {
+        setIsSendingMessage(false);
+        setStreamingThinking("");
+      }
+    },
+    [
+      activeConversation,
+      assistantState.model,
+      assistantState.provider,
+      assistantState.systemPrompt,
+      assistantUserId,
+      getCurrentAuthToken,
+      isSendingMessage,
+      persistConversationBestEffort,
+      updateAssistantState,
+    ],
+  );
+
+  const setProvider = React.useCallback(
+    (provider: AssistantProvider) => {
+      setAssistantError(null);
+      updateAssistantState((previous) => ({
+        ...previous,
+        provider,
+        model: PROVIDER_DEFAULT_MODELS[provider],
+      }));
+    },
+    [updateAssistantState],
+  );
+
+  const setModel = React.useCallback(
+    (model: string) => {
+      updateAssistantState((previous) => ({
+        ...previous,
+        model,
+      }));
+    },
+    [updateAssistantState],
+  );
 
   const createConversation = () => {
     const conversation = createEmptyConversation();
+    setAssistantError(null);
     updateAssistantState((previous) => ({
       ...previous,
       activeConversationId: conversation.id,
@@ -248,6 +486,7 @@ export function useAppSidebarAssistantState(params: {
   };
 
   const selectConversation = (conversationId: string) => {
+    setAssistantError(null);
     updateAssistantState((previous) => ({
       ...previous,
       activeConversationId: conversationId,
@@ -290,11 +529,18 @@ export function useAppSidebarAssistantState(params: {
 
   return {
     assistantState,
+    activeConversation,
     sortedAssistantConversations,
     renamingConversationId,
     renameValue,
+    assistantError,
+    isSendingMessage,
+    streamingThinking,
+    setProvider,
+    setModel,
     setRenameValue,
     createConversation,
+    sendPrompt,
     selectConversation,
     startConversationRename,
     saveConversationRename,

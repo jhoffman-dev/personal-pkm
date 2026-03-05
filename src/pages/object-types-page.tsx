@@ -115,7 +115,7 @@ export function ObjectTypesPage() {
   };
 
   return (
-    <section className="h-[calc(100svh-41px)] p-6">
+    <section className="h-full min-h-0 overflow-hidden p-[var(--workbench-page-padding)]">
       <Card className="h-full gap-0 py-0">
         <CardContent className="flex h-full min-h-0 p-0">
           <aside className="w-72 shrink-0 border-r p-3">

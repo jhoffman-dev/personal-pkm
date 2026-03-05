@@ -19,6 +19,16 @@ export type ChatRequest = {
   messages: ChatMessage[];
 };
 
+export type ProviderModelsRequest = {
+  provider?: "ollama" | "gemini" | "vertex";
+  googleAiStudioApiKey?: string;
+};
+
+export type ProviderModelsResponse = {
+  provider: string;
+  models: string[];
+};
+
 export type ChatResponse = {
   provider: string;
   model: string | null;
@@ -228,4 +238,23 @@ export async function deleteAssistantChat(params: {
     const errorText = await response.text();
     throw new Error(errorText || "Failed to delete assistant chat");
   }
+}
+
+export async function listProviderModels(
+  request: ProviderModelsRequest,
+): Promise<ProviderModelsResponse> {
+  const response = await fetch(`${getAiBaseUrl()}/api/ai/models`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to load provider models");
+  }
+
+  return response.json() as Promise<ProviderModelsResponse>;
 }

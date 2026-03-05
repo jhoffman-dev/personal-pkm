@@ -38,7 +38,7 @@ export function AppBar({
   };
 
   return (
-    <header className="flex h-[41px] shrink-0 items-center border-b bg-background px-2">
+    <header className="flex h-[var(--workbench-app-bar-height)] shrink-0 items-center border-b bg-background/95 px-2 backdrop-blur">
       <div className="flex w-full min-w-0 items-center">
         <div className="flex min-w-0 shrink-0 items-center gap-1.5">
           <SidebarTrigger className="size-8" />
@@ -48,7 +48,9 @@ export function AppBar({
           />
 
           <div className="hidden w-36 shrink-0 items-center md:flex">
-            <p className="text-muted-foreground truncate text-xs">{title}</p>
+            <p className="text-muted-foreground truncate text-sm font-medium">
+              {title}
+            </p>
           </div>
         </div>
 
@@ -76,7 +78,7 @@ export function AppBar({
             <div className="relative min-w-0 flex-1">
               <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
               <Input
-                className="h-8 border-muted pl-8 text-sm"
+                className="h-8 border-border/80 bg-muted/40 pl-8 text-sm"
                 placeholder="Search, commands, and files"
               />
             </div>

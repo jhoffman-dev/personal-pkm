@@ -108,8 +108,46 @@ function createOllamaProvider() {
     }
   }
 
+  async function listModels() {
+    const response = await fetch(`${DEFAULT_OLLAMA_BASE_URL}/api/tags`, {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Ollama model listing failed (${response.status}): ${text}`,
+      );
+    }
+
+    const data = await response.json();
+    const rawModels = Array.isArray(data?.models) ? data.models : [];
+    const modelNames = rawModels
+      .map((entry) => {
+        if (typeof entry?.name === "string") {
+          return entry.name.trim();
+        }
+
+        if (typeof entry?.model === "string") {
+          return entry.model.trim();
+        }
+
+        return "";
+      })
+      .filter(Boolean);
+
+    const deduped = Array.from(new Set(modelNames));
+
+    if (deduped.length === 0) {
+      return [DEFAULT_OLLAMA_MODEL];
+    }
+
+    return deduped;
+  }
+
   return {
     id: "ollama",
+    listModels,
     async generateChat(messages, options = {}) {
       const model = options.model || DEFAULT_OLLAMA_MODEL;
       const payload = {
